@@ -4,8 +4,24 @@ const User = require('../models/User.model.js');
 // Create a new user
 exports.createUser = async (req, res) => {
     try {
+        let addressObj = req.body.address;
+        // Remove address from req.body for initial user creation
+        delete req.body.address;
+        
+        // Create user first (without address)
         const user = new User(req.body);
         await user.save();
+
+        // If address is provided, create address and link to user
+        if (addressObj && typeof addressObj === 'object') {
+            addressObj.userId = user._id;
+            const newAddress = await AddressModel.create(addressObj);
+            user.address.push(newAddress._id);
+            await user.save();
+        }
+
+        // Populate address field for response (optional)
+        await user.populate('address');
         res.status(201).json(user);
     } catch (err) {
         res.status(400).json({ error: err.message });

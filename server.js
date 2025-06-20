@@ -1,6 +1,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
+const morgan = require('morgan');
 
 // Load env vars
 dotenv.config();
@@ -12,6 +13,7 @@ const app = express();
 
 // Body parser middleware
 app.use(express.json());
+app.use(morgan(':method :url :status length-:res[content-length]  time-:response-time ms'));
 
 // --- Define Routes Later ---
 // app.use('/api/auth', require('./routes/authRoutes'));
