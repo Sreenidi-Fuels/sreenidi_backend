@@ -19,7 +19,7 @@ const TrackingSchema = new mongoose.Schema(
     dispatch: {
       status: {
         type: String,
-        enum: ["pending", "dispatched"],
+        enum: ["pending", "dispatched", "completed"],
         default: "pending",
       },
     },

@@ -35,9 +35,17 @@ exports.getOrderById = async (req, res) => {
 // Update an order by ID
 exports.updateOrder = async (req, res) => {
     try {
-        const order = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ error: 'Order not found' });
-        res.json(order);
+
+        // Prevent editing if both startVerified and stopVerified are true
+        if (order.tracking.fuelDispense.startVerified && order.tracking.fuelDispense.stopVerified) {
+            return res.status(403).json({ error: 'Order cannot be edited after dispensing is completed.' });
+        }
+
+        // Proceed with update if allowed
+        const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        res.json(updatedOrder);
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
@@ -100,6 +108,9 @@ exports.updateDispatchStatus = async (req, res) => {
         if (!status || !['pending', 'dispatched'].includes(status)) {
             return res.status(400).json({ error: 'Invalid or missing dispatch status' });
         }
+        if(!order.tracking.driverAssignment.driverId){
+             return res.status(400).json({ error: 'Cannot start dispatch as driver is not assigned!' });
+        }
 
         order.tracking.dispatch.status = status;
         order.tracking.dispatch.dispatchedAt = new Date();
@@ -120,14 +131,36 @@ exports.validateStartDispenseOtp = async (req, res) => {
         const { otp } = req.body;
         if (!otp) return res.status(400).json({ error: 'OTP is required' });
 
-        if (order.tracking.fuelDispense.startDispenseOtp === Number(otp)) {
+        if (order.tracking.fuelDispense.startDispenseOtp === Number(otp) && order.tracking.fuelDispense.startVerified === false) {
             order.tracking.fuelDispense.startVerified = true;
             await order.save();
             return res.json({ success: true, message: 'OTP verified successfully' });
         } else {
-            return res.status(400).json({ success: false, error: 'Invalid OTP' });
+            return res.status(400).json({ success: false, error: 'Invalid OTP/ Already started dispensing' });
         }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
+
+//validate stopDispenseOtp for an order
+exports.validateStopDispenseOtp = async (req, res) => {
+    try{
+        const order = await Order.findById(req.params.id);
+        if(!order) return res.status(404).json({ error: 'Order not found!'});
+
+        const { otp } = req.body;
+        if(!otp) return res.status(400).json({ error: 'OTP is required'});
+
+        if(order.tracking.fuelDispense.startVerified === true && order.tracking.fuelDispense.stopDispenseOtp === Number(otp)){
+            order.tracking.fuelDispense.stopVerified = true;
+            order.tracking.dispatch.status = 'completed'
+            await order.save();
+            return res.json({ success: true, message: 'OTP verified succesfully' });
+        }else{
+            return res.json(400).json({ success: false, error: 'Invalid OTP' });
+        }
+    }catch( err ){
+        res.status(500).json({ error: err.message });
+    }
+}

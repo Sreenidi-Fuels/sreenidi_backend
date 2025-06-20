@@ -29,4 +29,7 @@ router.patch('/:id/dispatch', orderController.updateDispatchStatus);
 // validate startDispenseOtp
 router.patch('/:id/validate-start-otp', orderController.validateStartDispenseOtp);
 
+// validate stopDispenseOtp
+router.patch('/:id/validate-stop-otp', orderController.validateStopDispenseOtp);
+
 module.exports = router;
