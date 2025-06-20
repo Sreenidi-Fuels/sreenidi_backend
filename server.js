@@ -16,10 +16,11 @@ app.use(express.json());
 app.use(morgan(':method :url :status length-:res[content-length]  time-:response-time ms'));
 
 // --- Define Routes Later ---
-// app.use('/api/auth', require('./routes/authRoutes'));
+// app.use('/api/auth', require('./routes/auth.route'));
 app.use('/api/users', require('./routes/user.route'));
 app.use('/api/drivers', require('./routes/driver.route'));
 app.use('/api/orders', require('./routes/order.route'));
+app.use('/api/otpless', require('./routes/otpless.route'));
 // app.use('/api/admin', require('./routes/adminRoutes'));
 
 // --- Error Handling Middleware Later ---
