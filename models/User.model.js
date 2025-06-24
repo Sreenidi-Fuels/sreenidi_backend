@@ -13,13 +13,7 @@ const UserSchema = new mongoose.Schema({
         required: function() { return this.role === 'credited'; },
         default: function() { return this.role === 'credited' ? 0 : undefined; }
     },
-    assets: [
-        {
-            name: { type: String, required: true },
-            type: { type: String, required: true },
-            industry: { type: String, required: true }
-        }
-    ],
+    assets: [{ type: mongoose.Schema.Types.ObjectId, ref: "Asset" }],
     feedback: [
         {
             name: { type: String, required: true },

@@ -1,5 +1,6 @@
 const AddressModel = require('../models/Address.model.js');
 const User = require('../models/User.model.js');
+const Asset = require('../models/Asset.model.js');
 
 // Create a new user
 exports.createUser = async (req, res) => {
@@ -20,8 +21,8 @@ exports.createUser = async (req, res) => {
             await user.save();
         }
 
-        // Populate address field for response (optional)
-        await user.populate('address');
+        // Populate address and assets fields for response
+        await user.populate(['address', 'assets']);
         res.status(201).json(user);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -31,7 +32,7 @@ exports.createUser = async (req, res) => {
 // Get all users
 exports.getUsers = async (req, res) => {
     try {
-        const users = await User.find();
+        const users = await User.find().populate(['address', 'assets']);
         res.json(users);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -41,7 +42,7 @@ exports.getUsers = async (req, res) => {
 // Get a single user by ID
 exports.getUserById = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
+        const user = await User.findById(req.params.id).populate(['address', 'assets']);
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json(user);
     } catch (err) {
@@ -82,13 +83,21 @@ exports.addAssetsToUser = async (req, res) => {
             return res.status(400).json({ error: 'Assets must be a non-empty array' });
         }
 
+        // Create assets in Asset collection
+        const createdAssets = await Asset.insertMany(assets);
+        const assetIds = createdAssets.map(asset => asset._id);
+
+        // Push asset ObjectIds to user's assets array
         const user = await User.findByIdAndUpdate(
             id,
-            { $push: { assets: { $each: assets } } },
+            { $push: { assets: { $each: assetIds } } },
             { new: true, runValidators: true }
         );  
 
         if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Populate address and assets fields for response
+        await user.populate(['address', 'assets']);
         res.json(user);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -114,6 +123,9 @@ exports.addAddressToUser = async (req, res) => {
         );
 
         if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Populate address and assets fields for response
+        await user.populate(['address', 'assets']);
         res.json(user);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -123,7 +135,7 @@ exports.addAddressToUser = async (req, res) => {
 // Get addresses of a user by ID
 exports.getUserAddresses = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id, 'address');
+        const user = await User.findById(req.params.id).populate('address');
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json(user.address);
     } catch (err) {
@@ -134,7 +146,7 @@ exports.getUserAddresses = async (req, res) => {
 // Get assets of a user by ID
 exports.getUserAssets = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id, 'assets');
+        const user = await User.findById(req.params.id).populate('assets');
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json(user.assets);
     } catch (err) {
