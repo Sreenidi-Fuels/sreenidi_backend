@@ -21,7 +21,7 @@ app.use('/api/users', require('./routes/user.route'));
 app.use('/api/drivers', require('./routes/driver.route'));
 app.use('/api/orders', require('./routes/order.route'));
 app.use('/api/otpless', require('./routes/otpless.route'));
-// app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/admin', require('./routes/admin.route'));
 
 // --- Error Handling Middleware Later ---
 // const { errorHandler } = require('./middleware/errorMiddleware');
