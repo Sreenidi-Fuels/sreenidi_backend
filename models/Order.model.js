@@ -35,7 +35,7 @@ const TrackingSchema = new mongoose.Schema(
 
 const OrderSchema = new mongoose.Schema(
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     shippingAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Address", required: true },
     billingAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Address", required: true },
     fuelQuantity: {
@@ -81,6 +81,10 @@ const OrderSchema = new mongoose.Schema(
     paymentType: {
       type: String,
       enum: ['credit', 'cash'],
+    },
+    asset: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Asset"
     },
   }, { timestamps: true }
 );

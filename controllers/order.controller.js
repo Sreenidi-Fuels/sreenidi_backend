@@ -1,10 +1,15 @@
 const Order = require('../models/Order.model.js');
 
-// Create a new order
+// Create a new normal order
 exports.createOrder = async (req, res) => {
     try {
         const order = new Order(req.body);
         await order.save();
+        await order.populate([
+            { path: 'shippingAddress' },
+            { path: 'billingAddress' },
+            { path: 'asset' }
+        ]);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -19,9 +24,16 @@ exports.createDirectCreditOrder = async (req, res) => {
             orderType: 'direct',
             paymentType: 'credit',
             deliveryMode: 'earliest', // Direct orders are always immediate
+            asset: req.body.assetId
         };
         const order = new Order(orderData);
         await order.save();
+        // Correct way to populate multiple fields after save
+        await order.populate([
+            { path: 'shippingAddress' },
+            { path: 'billingAddress' },
+            { path: 'asset' }
+        ]);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -39,6 +51,11 @@ exports.createDirectCashOrder = async (req, res) => {
         };
         const order = new Order(orderData);
         await order.save();
+        await order.populate([
+            { path: 'shippingAddress' },
+            { path: 'billingAddress' },
+            { path: 'asset' }
+        ]);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -48,7 +65,10 @@ exports.createDirectCashOrder = async (req, res) => {
 // Get all orders
 exports.getOrders = async (req, res) => {
     try {
-        const orders = await Order.find();
+        const orders = await Order.find()
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -58,7 +78,10 @@ exports.getOrders = async (req, res) => {
 // Get a single order by ID
 exports.getOrderById = async (req, res) => {
     try {
-        const order = await Order.findById(req.params.id);
+        const order = await Order.findById(req.params.id)
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
         if (!order) return res.status(404).json({ error: 'Order not found' });
         res.json(order);
     } catch (err) {
@@ -71,7 +94,10 @@ exports.getOrdersByUserId = async (req, res) => {
     try {
         const userId = req.params.userId;
         if (!userId) return res.status(400).json({ error: 'User ID is required' });
-        const orders = await Order.find({ user: userId });
+        const orders = await Order.find({ user: userId })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -83,7 +109,10 @@ exports.getOrdersByDriverId = async (req, res) => {
     try {
         const driverId = req.params.driverId;
         if (!driverId) return res.status(400).json({ error: 'Driver ID is required' });
-        const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId });
+        const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -95,7 +124,10 @@ exports.getCompletedOrdersByUserId = async (req, res) => {
     try {
         const userId = req.params.userId;
         if (!userId) return res.status(400).json({ error: 'User ID is required' });
-        const orders = await Order.find({ user: userId, 'tracking.dispatch.status': 'completed' });
+        const orders = await Order.find({ user: userId, 'tracking.dispatch.status': 'completed' })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -107,7 +139,10 @@ exports.getCompletedOrdersByDriverId = async (req, res) => {
     try {
         const driverId = req.params.driverId;
         if (!driverId) return res.status(400).json({ error: 'Driver ID is required' });
-        const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId, 'tracking.dispatch.status': 'completed' });
+        const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId, 'tracking.dispatch.status': 'completed' })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
