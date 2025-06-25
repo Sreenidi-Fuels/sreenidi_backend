@@ -11,6 +11,40 @@ exports.createOrder = async (req, res) => {
     }
 };
 
+// Create a direct credit order
+exports.createDirectCreditOrder = async (req, res) => {
+    try {
+        const orderData = {
+            ...req.body,
+            orderType: 'direct',
+            paymentType: 'credit',
+            deliveryMode: 'earliest', // Direct orders are always immediate
+        };
+        const order = new Order(orderData);
+        await order.save();
+        res.status(201).json(order);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+// Create a direct cash order
+exports.createDirectCashOrder = async (req, res) => {
+    try {
+        const orderData = {
+            ...req.body,
+            orderType: 'direct',
+            paymentType: 'cash',
+            deliveryMode: 'earliest', // Direct orders are always immediate
+        };
+        const order = new Order(orderData);
+        await order.save();
+        res.status(201).json(order);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
 // Get all orders
 exports.getOrders = async (req, res) => {
     try {

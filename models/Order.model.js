@@ -72,7 +72,16 @@ const OrderSchema = new mongoose.Schema(
           }
         };
       }
-    }
+    },
+    orderType: {
+      type: String,
+      enum: ['normal', 'direct'],
+      default: 'normal',
+    },
+    paymentType: {
+      type: String,
+      enum: ['credit', 'cash'],
+    },
   }, { timestamps: true }
 );
 
