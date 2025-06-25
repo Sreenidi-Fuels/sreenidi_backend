@@ -66,6 +66,54 @@ exports.getOrderById = async (req, res) => {
     }
 };
 
+// Get all orders for a specific user by userId
+exports.getOrdersByUserId = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        if (!userId) return res.status(400).json({ error: 'User ID is required' });
+        const orders = await Order.find({ user: userId });
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get all orders assigned to a specific driver by driverId
+exports.getOrdersByDriverId = async (req, res) => {
+    try {
+        const driverId = req.params.driverId;
+        if (!driverId) return res.status(400).json({ error: 'Driver ID is required' });
+        const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId });
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get completed orders for a specific user by userId
+exports.getCompletedOrdersByUserId = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        if (!userId) return res.status(400).json({ error: 'User ID is required' });
+        const orders = await Order.find({ user: userId, 'tracking.dispatch.status': 'completed' });
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get completed orders for a specific driver by driverId
+exports.getCompletedOrdersByDriverId = async (req, res) => {
+    try {
+        const driverId = req.params.driverId;
+        if (!driverId) return res.status(400).json({ error: 'Driver ID is required' });
+        const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId, 'tracking.dispatch.status': 'completed' });
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // Update an order by ID
 exports.updateOrder = async (req, res) => {
     try {

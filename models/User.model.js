@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema({
     gstNumber: { type: String },
     address: [{ type: mongoose.Schema.Types.ObjectId, ref: "Address" }],
     role: { type: String, enum: ['normal', 'credited'], default: 'normal' },
+    creaditFuelRate: { type: Number },
     creditAvailable: {
         type: Number,
         required: function() { return this.role === 'credited'; },
