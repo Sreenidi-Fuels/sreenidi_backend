@@ -7,7 +7,8 @@ const AdminSchema = new mongoose.Schema({
     images: [{
         data: Buffer,
         contentType: String
-    }]
-});
+    }],
+    dailyRate: { type: Number, required: true}
+}, { timestamps: true });
 
 module.exports = mongoose.model('Admin', AdminSchema);

@@ -32,4 +32,16 @@ router.patch('/:id/validate-start-otp', orderController.validateStartDispenseOtp
 // validate stopDispenseOtp
 router.patch('/:id/validate-stop-otp', orderController.validateStopDispenseOtp);
 
+// Get all orders for a specific user by userId
+router.get('/user/:userId', orderController.getOrdersByUserId);
+
+// Get all orders for a specific driver by driverId
+router.get('/driver/:driverId', orderController.getOrdersByDriverId);
+
+// Get completed orders for a specific user by userId
+router.get('/user/:userId/completed', orderController.getCompletedOrdersByUserId);
+
+// Get completed orders for a specific driver by driverId
+router.get('/driver/:driverId/completed', orderController.getCompletedOrdersByDriverId);
+
 module.exports = router;
