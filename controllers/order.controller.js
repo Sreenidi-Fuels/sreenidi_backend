@@ -94,11 +94,28 @@ exports.getOrdersByUserId = async (req, res) => {
     try {
         const userId = req.params.userId;
         if (!userId) return res.status(400).json({ error: 'User ID is required' });
-        const orders = await Order.find({ user: userId })
+        const orders = await Order.find({ userId: userId })
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
         res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get the last order for a specific user by userId
+exports.getLastOrderByUserId = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        if (!userId) return res.status(400).json({ error: 'User ID is required' });
+        const lastOrder = await Order.findOne({ userId: userId })
+            .sort({ createdAt: -1 })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
+        if (!lastOrder) return res.status(404).json({ error: 'No orders found for this user' });
+        res.json(lastOrder);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -124,7 +141,7 @@ exports.getCompletedOrdersByUserId = async (req, res) => {
     try {
         const userId = req.params.userId;
         if (!userId) return res.status(400).json({ error: 'User ID is required' });
-        const orders = await Order.find({ user: userId, 'tracking.dispatch.status': 'completed' })
+        const orders = await Order.find({ userId: userId, 'tracking.dispatch.status': 'completed' })
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
@@ -143,6 +160,24 @@ exports.getCompletedOrdersByDriverId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get all ongoing orders for a specific user by userId (not completed)
+exports.getOngoingOrdersByUserId = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        if (!userId) return res.status(400).json({ error: 'User ID is required' });
+        const orders = await Order.find({
+            userId: userId,
+            'tracking.dispatch.status': { $ne: 'completed' }
+        })
+        .populate('shippingAddress')
+        .populate('billingAddress')
+        .populate('asset');
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -280,4 +315,45 @@ exports.validateStopDispenseOtp = async (req, res) => {
     }catch( err ){
         res.status(500).json({ error: err.message });
     }
-}
+};
+
+// Repeat a completed order for a user by userId and orderId
+exports.repeatCompletedOrder = async (req, res) => {
+    try {
+        const { userId, orderId } = req.params;
+        // Find the completed order for this user
+        const prevOrder = await Order.findOne({
+            _id: orderId,
+            userId: userId,
+            'tracking.dispatch.status': 'completed'
+        });
+        if (!prevOrder) return res.status(404).json({ error: 'Completed order not found for this user' });
+
+        // Prepare new order data (copy fields except _id, timestamps, and tracking)
+        const newOrderData = {
+            userId: prevOrder.userId,
+            shippingAddress: prevOrder.shippingAddress,
+            billingAddress: prevOrder.billingAddress,
+            fuelQuantity: prevOrder.fuelQuantity,
+            amount: prevOrder.amount,
+            deliveryMode: prevOrder.deliveryMode,
+            deliveryDate: prevOrder.deliveryDate,
+            orderType: prevOrder.orderType,
+            paymentType: prevOrder.paymentType,
+            asset: prevOrder.asset
+            // tracking will be auto-generated
+        };
+
+        // Create and save the new order
+        const newOrder = new Order(newOrderData);
+        await newOrder.save();
+        await newOrder.populate([
+            { path: 'shippingAddress' },
+            { path: 'billingAddress' },
+            { path: 'asset' }
+        ]);
+        res.status(201).json(newOrder);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};

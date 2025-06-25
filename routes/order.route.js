@@ -50,4 +50,13 @@ router.get('/user/:userId/completed', orderController.getCompletedOrdersByUserId
 // Get completed orders for a specific driver by driverId
 router.get('/driver/:driverId/completed', orderController.getCompletedOrdersByDriverId);
 
+// Get the last order for a specific user by userId
+router.get('/user/:userId/last', orderController.getLastOrderByUserId);
+
+// Repeat a completed order for a user by userId and orderId
+router.post('/user/:userId/repeat/:orderId', orderController.repeatCompletedOrder);
+
+// Get all ongoing orders for a specific user by userId
+router.get('/user/:userId/ongoing', orderController.getOngoingOrdersByUserId);
+
 module.exports = router;
