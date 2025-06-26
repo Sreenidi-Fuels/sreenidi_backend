@@ -8,6 +8,11 @@ exports.createUser = async (req, res) => {
         let addressObj = req.body.address;
         // Remove address from req.body for initial user creation
         delete req.body.address;
+
+        // Ensure address field is not set to null or [null] in req.body
+        if (req.body.address === null || (Array.isArray(req.body.address) && req.body.address.length === 1 && req.body.address[0] === null)) {
+            delete req.body.address;
+        }
         
         // Create user first (without address)
         const user = new User(req.body);
@@ -18,6 +23,12 @@ exports.createUser = async (req, res) => {
             addressObj.userId = user._id;
             const newAddress = await AddressModel.create(addressObj);
             user.address.push(newAddress._id);
+            // Remove any nulls from the address array
+            user.address = user.address.filter(a => a !== null);
+            await user.save();
+        } else {
+            // Ensure address array is empty if no address is provided
+            user.address = [];
             await user.save();
         }
 
@@ -149,6 +160,38 @@ exports.getUserAssets = async (req, res) => {
         const user = await User.findById(req.params.id).populate('assets');
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json(user.assets);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get a single address of a user by userId and addressId
+exports.getUserAddressById = async (req, res) => {
+    try {
+        const { userId, addressId } = req.params;
+        // Check if the address belongs to the user
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user.address.includes(addressId)) return res.status(404).json({ error: 'Address not found for this user' });
+        const address = await AddressModel.findById(addressId);
+        if (!address) return res.status(404).json({ error: 'Address not found' });
+        res.json(address);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get a single asset of a user by userId and assetId
+exports.getUserAssetById = async (req, res) => {
+    try {
+        const { userId, assetId } = req.params;
+        // Check if the asset belongs to the user
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user.assets.includes(assetId)) return res.status(404).json({ error: 'Asset not found for this user' });
+        const asset = await Asset.findById(assetId);
+        if (!asset) return res.status(404).json({ error: 'Asset not found' });
+        res.json(asset);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

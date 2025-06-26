@@ -1,5 +1,21 @@
 const Order = require('../models/Order.model.js');
 
+function maskDeliveryImage(order) {
+    if (order && order.deliveryImage) {
+        // Only keep contentType, optionally add a flag or image endpoint
+        order.deliveryImage = {
+            contentType: order.deliveryImage.contentType || null,
+            hasImage: !!order.deliveryImage.data
+        };
+    }
+}
+
+function maskDeliveryImageInArray(orders) {
+    if (Array.isArray(orders)) {
+        orders.forEach(maskDeliveryImage);
+    }
+}
+
 // Create a new normal order
 exports.createOrder = async (req, res) => {
     try {
@@ -10,6 +26,7 @@ exports.createOrder = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
+        maskDeliveryImage(order);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -28,12 +45,12 @@ exports.createDirectCreditOrder = async (req, res) => {
         };
         const order = new Order(orderData);
         await order.save();
-        // Correct way to populate multiple fields after save
         await order.populate([
             { path: 'shippingAddress' },
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
+        maskDeliveryImage(order);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -56,6 +73,7 @@ exports.createDirectCashOrder = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
+        maskDeliveryImage(order);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -69,6 +87,7 @@ exports.getOrders = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
+        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -83,6 +102,7 @@ exports.getOrderById = async (req, res) => {
             .populate('billingAddress')
             .populate('asset');
         if (!order) return res.status(404).json({ error: 'Order not found' });
+        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -98,6 +118,7 @@ exports.getOrdersByUserId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
+        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -115,6 +136,7 @@ exports.getLastOrderByUserId = async (req, res) => {
             .populate('billingAddress')
             .populate('asset');
         if (!lastOrder) return res.status(404).json({ error: 'No orders found for this user' });
+        maskDeliveryImage(lastOrder);
         res.json(lastOrder);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -130,6 +152,7 @@ exports.getOrdersByDriverId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
+        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -145,6 +168,7 @@ exports.getCompletedOrdersByUserId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
+        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -160,6 +184,7 @@ exports.getCompletedOrdersByDriverId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
+        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -178,6 +203,7 @@ exports.getOngoingOrdersByUserId = async (req, res) => {
         .populate('shippingAddress')
         .populate('billingAddress')
         .populate('asset');
+        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -196,7 +222,11 @@ exports.updateOrder = async (req, res) => {
         }
 
         // Proceed with update if allowed
-        const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
+        maskDeliveryImage(updatedOrder);
         res.json(updatedOrder);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -208,22 +238,29 @@ exports.deleteOrder = async (req, res) => {
     try {
         const order = await Order.findByIdAndDelete(req.params.id);
         if (!order) return res.status(404).json({ error: 'Order not found' });
-        res.json({ message: 'Order deleted successfully' });
+        maskDeliveryImage(order);
+        res.json({ message: 'Order deleted successfully', order });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// Accept an order (admin action)
+// Accept or reject an order (admin action)
 exports.acceptOrder = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ error: 'Order not found' });
 
-        // Update order confirmation status to 'accepted'
-        order.tracking.orderConfirmation.status = 'accepted';
-        await order.save();
+        // Get status from request body (should be 'accepted' or 'rejected')
+        const { status } = req.body;
+        if (!status || !['accepted', 'rejected'].includes(status)) {
+            return res.status(400).json({ error: "Status must be 'accepted' or 'rejected'" });
+        }
 
+        // Update order confirmation status
+        order.tracking.orderConfirmation.status = status;
+        await order.save();
+        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -243,7 +280,7 @@ exports.assignDriver = async (req, res) => {
 
         order.tracking.driverAssignment.driverId = driverId;
         await order.save();
-
+        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -267,7 +304,7 @@ exports.updateDispatchStatus = async (req, res) => {
         order.tracking.dispatch.status = status;
         order.tracking.dispatch.dispatchedAt = new Date();
         await order.save();
-
+        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -286,7 +323,8 @@ exports.validateStartDispenseOtp = async (req, res) => {
         if (order.tracking.fuelDispense.startDispenseOtp === Number(otp) && order.tracking.fuelDispense.startVerified === false) {
             order.tracking.fuelDispense.startVerified = true;
             await order.save();
-            return res.json({ success: true, message: 'OTP verified successfully' });
+            maskDeliveryImage(order);
+            return res.json({ success: true, message: 'OTP verified successfully', order });
         } else {
             return res.status(400).json({ success: false, error: 'Invalid OTP/ Already started dispensing' });
         }
@@ -308,9 +346,10 @@ exports.validateStopDispenseOtp = async (req, res) => {
             order.tracking.fuelDispense.stopVerified = true;
             order.tracking.dispatch.status = 'completed'
             await order.save();
-            return res.json({ success: true, message: 'OTP verified succesfully' });
+            maskDeliveryImage(order);
+            return res.json({ success: true, message: 'OTP verified succesfully', order });
         }else{
-            return res.json(400).json({ success: false, error: 'Invalid OTP' });
+            return res.status(400).json({ success: false, error: 'Invalid OTP' });
         }
     }catch( err ){
         res.status(500).json({ error: err.message });
@@ -352,7 +391,65 @@ exports.repeatCompletedOrder = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
+        maskDeliveryImage(newOrder);
         res.status(201).json(newOrder);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get all completed orders (regardless of user)
+exports.getAllCompletedOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({ 'tracking.dispatch.status': 'completed' })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
+        maskDeliveryImageInArray(orders);
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Driver updates delivery details (jcno, deliveredLiters, deliveryImage as file)
+exports.updateDriverDeliveryDetails = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+
+        const { jcno, deliveredLiters } = req.body;
+        if (jcno !== undefined) order.jcno = jcno;
+        if (deliveredLiters !== undefined) order.deliveredLiters = deliveredLiters;
+        if (req.file) {
+            order.deliveryImage = {
+                data: req.file.buffer,
+                contentType: req.file.mimetype
+            };
+        }
+
+        await order.save();
+        await order.populate([
+            { path: 'shippingAddress' },
+            { path: 'billingAddress' },
+            { path: 'asset' }
+        ]);
+        maskDeliveryImage(order);
+        res.json(order);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+// Admin gets delivery image for an order
+exports.getOrderDeliveryImage = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order || !order.deliveryImage || !order.deliveryImage.data) {
+            return res.status(404).json({ error: 'Image not found for this order' });
+        }
+        res.set('Content-Type', order.deliveryImage.contentType);
+        res.send(order.deliveryImage.data);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

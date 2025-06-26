@@ -86,6 +86,16 @@ const OrderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Asset"
     },
+    jcno: {
+      type: String
+    },
+    deliveredLiters: {
+      type: Number
+    },
+    deliveryImage: {
+      data: Buffer,
+      contentType: String
+    }
   }, { timestamps: true }
 );
 
