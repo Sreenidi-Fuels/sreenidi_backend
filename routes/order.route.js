@@ -69,4 +69,10 @@ router.patch('/:id/driver-delivery', upload.single('deliveryImage'), orderContro
 // Admin gets delivery image for an order
 router.get('/:id/delivery-image', orderController.getOrderDeliveryImage);
 
+// Count how many orders a user has placed in the last week
+router.get('/user/:userId/count/last-week', orderController.getUserOrderCountLastWeek);
+
+// Get the total number of liters ordered by a user
+router.get('/user/:userId/total-liters', orderController.getUserTotalLitersOrdered);
+
 module.exports = router;

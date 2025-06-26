@@ -1,4 +1,5 @@
 const Order = require('../models/Order.model.js');
+const mongoose = require('mongoose');
 
 function maskDeliveryImage(order) {
     if (order && order.deliveryImage) {
@@ -450,6 +451,41 @@ exports.getOrderDeliveryImage = async (req, res) => {
         }
         res.set('Content-Type', order.deliveryImage.contentType);
         res.send(order.deliveryImage.data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Count how many orders a user has placed in the last week
+exports.getUserOrderCountLastWeek = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        if (!userId) return res.status(400).json({ error: 'User ID is required' });
+        const now = new Date();
+        const lastWeek = new Date(now);
+        lastWeek.setDate(now.getDate() - 7);
+        const count = await Order.countDocuments({
+            userId: userId,
+            createdAt: { $gte: lastWeek, $lte: now }
+        });
+        res.json({ userId, count });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get the total number of liters ordered by a user across all their orders
+exports.getUserTotalLitersOrdered = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        if (!userId) return res.status(400).json({ error: 'User ID is required' });
+        const objectId = new mongoose.Types.ObjectId(userId);
+        const result = await Order.aggregate([
+            { $match: { userId: objectId } },
+            { $group: { _id: null, totalLiters: { $sum: "$fuelQuantity" } } }
+        ]);
+        const totalLiters = result.length > 0 ? result[0].totalLiters : 0;
+        res.json({ userId, totalLiters });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
