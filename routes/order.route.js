@@ -15,6 +15,9 @@ router.post('/direct/cash', orderController.createDirectCashOrder);
 // Get all completed orders (regardless of user)
 router.get('/completed', orderController.getAllCompletedOrders);
 
+// Get all current orders (not completed) for admin
+router.get('/current', orderController.getAllCurrentOrders);
+
 // Get all orders for a specific user by userId
 router.get('/user/:userId', orderController.getOrdersByUserId);
 

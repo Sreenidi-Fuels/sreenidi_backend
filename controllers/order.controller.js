@@ -490,3 +490,17 @@ exports.getUserTotalLitersOrdered = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// Get all current orders (not completed) for admin
+exports.getAllCurrentOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({ 'tracking.dispatch.status': { $ne: 'completed' } })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
+        maskDeliveryImageInArray(orders);
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
