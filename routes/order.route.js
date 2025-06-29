@@ -18,6 +18,9 @@ router.get('/completed', orderController.getAllCompletedOrders);
 // Get all current orders (not completed) for admin
 router.get('/current', orderController.getAllCurrentOrders);
 
+// Get all current assigned orders for admin (driver assigned and dispatch not completed)
+router.get('/currentAssigned', orderController.getAllCurrentAssignedOrders);
+
 // Get all orders for a specific user by userId
 router.get('/user/:userId', orderController.getOrdersByUserId);
 
@@ -33,6 +36,9 @@ router.get('/user/:userId/last', orderController.getLastOrderByUserId);
 // Repeat a completed order for a user by userId and orderId
 router.post('/user/:userId/repeat/:orderId', orderController.repeatCompletedOrder);
 
+// Get all orders where driver dispatch status is not completed
+router.get('/driver/ongoing', orderController.getAllDriverOngoingOrders);
+
 // Get all orders for a specific driver by driverId
 router.get('/driver/:driverId', orderController.getOrdersByDriverId);
 
@@ -41,6 +47,9 @@ router.get('/driver/:driverId/completed', orderController.getCompletedOrdersByDr
 
 // Get all orders
 router.get('/', orderController.getOrders);
+
+// Get all orders for user acceptance (orderConfirmation pending or driverAssignment.driverId is null)
+router.get('/userAcceptence', orderController.getAllUserAcceptanceOrders);
 
 // Get a single order by ID (keep this after all specific GET routes)
 router.get('/:id', orderController.getOrderById);

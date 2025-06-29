@@ -399,13 +399,18 @@ exports.repeatCompletedOrder = async (req, res) => {
     }
 };
 
-// Get all completed orders (regardless of user)
+// Get all completed orders (regardless of user) or orders with orderConfirmation status as rejected
 exports.getAllCompletedOrders = async (req, res) => {
     try {
-        const orders = await Order.find({ 'tracking.dispatch.status': 'completed' })
-            .populate('shippingAddress')
-            .populate('billingAddress')
-            .populate('asset');
+        const orders = await Order.find({
+            $or: [
+                { 'tracking.dispatch.status': 'completed' },
+                { 'tracking.orderConfirmation.status': 'rejected' }
+            ]
+        })
+        .populate('shippingAddress')
+        .populate('billingAddress')
+        .populate('asset');
         maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
@@ -498,6 +503,58 @@ exports.getAllCurrentOrders = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
+        maskDeliveryImageInArray(orders);
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get all current orders for admin where driver is assigned and dispatch status is not completed
+exports.getAllCurrentAssignedOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({
+            'tracking.driverAssignment.driverId': { $ne: null },
+            'tracking.dispatch.status': { $ne: 'completed' }
+        })
+        .populate('shippingAddress')
+        .populate('billingAddress')
+        .populate('asset');
+        maskDeliveryImageInArray(orders);
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get all orders where orderConfirmation is pending OR driverAssignment.driverId is null
+exports.getAllUserAcceptanceOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({
+            $or: [
+                { 'tracking.orderConfirmation.status': 'pending' },
+                { 'tracking.driverAssignment.driverId': null }
+            ]
+        })
+        .populate('shippingAddress')
+        .populate('billingAddress')
+        .populate('asset');
+        maskDeliveryImageInArray(orders);
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get all orders where driver dispatch status is not completed
+exports.getAllDriverOngoingOrders = async (req, res) => {
+    try {
+        const orders = await Order.find({
+            'tracking.dispatch.status': { $ne: 'completed' }
+        })
+        .populate('shippingAddress')
+        .populate('billingAddress')
+        .populate('asset');
         maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
