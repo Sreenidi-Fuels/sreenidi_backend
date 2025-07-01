@@ -36,11 +36,11 @@ router.get('/user/:userId/last', orderController.getLastOrderByUserId);
 // Repeat a completed order for a user by userId and orderId
 router.post('/user/:userId/repeat/:orderId', orderController.repeatCompletedOrder);
 
-// Get all orders where driver dispatch status is not completed
-router.get('/driver/ongoing', orderController.getAllDriverOngoingOrders);
-
 // Get all orders for a specific driver by driverId
 router.get('/driver/:driverId', orderController.getOrdersByDriverId);
+
+// Get all orders where driver dispatch status is not completed
+router.get('/driver/:driverId/ongoing', orderController.getAllDriverOngoingOrders);
 
 // Get completed orders for a specific driver by driverId
 router.get('/driver/:driverId/completed', orderController.getCompletedOrdersByDriverId);

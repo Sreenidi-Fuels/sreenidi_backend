@@ -95,6 +95,26 @@ const OrderSchema = new mongoose.Schema(
     deliveryImage: {
       data: Buffer,
       contentType: String
+    },
+    receiverDetails: {
+      type: {
+        type: String,
+        enum: ['self', 'other'],
+        default:'self',
+        required: true
+      },
+      name: {
+        type: String,
+        required: function() {
+          return this.receiverDetails && this.receiverDetails.type === 'other';
+        }
+      },
+      phoneNo: {
+        type: String,
+        required: function() {
+          return this.receiverDetails && this.receiverDetails.type === 'other';
+        }
+      }
     }
   }, { timestamps: true }
 );

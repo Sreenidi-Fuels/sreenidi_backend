@@ -546,11 +546,14 @@ exports.getAllUserAcceptanceOrders = async (req, res) => {
     }
 };
 
-// Get all orders where driver dispatch status is not completed
+// Get all ongoing orders (pending or dispatched) for a specific driver
 exports.getAllDriverOngoingOrders = async (req, res) => {
     try {
+        const driverId = req.params.driverId;
+        if (!driverId) return res.status(400).json({ error: 'Driver ID is required' });
         const orders = await Order.find({
-            'tracking.dispatch.status': { $ne: 'completed' }
+            'tracking.driverAssignment.driverId': driverId,
+            'tracking.dispatch.status': { $in: ['pending', 'dispatched'] }
         })
         .populate('shippingAddress')
         .populate('billingAddress')
