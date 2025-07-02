@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 
 const UserSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    phoneNumber: { type: String },
+    name: { type: String },
+    email: { type: String, unique: true },
+    phoneNumber: { type: String, required: true },
     companyName: { type: String },
     gstNumber: { type: String },
     address: [{ type: mongoose.Schema.Types.ObjectId, ref: "Address" }],

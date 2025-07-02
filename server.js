@@ -31,6 +31,8 @@ app.use('/api/drivers', require('./routes/driver.route'));
 app.use('/api/orders', require('./routes/order.route'));
 app.use('/api/otpless', require('./routes/otpless.route'));
 app.use('/api/admin', require('./routes/admin.route'));
+app.use('/api/assets', require('./routes/asset.route'));
+app.use('/api/addresses', require('./routes/address.route'));
 
 // --- Error Handling Middleware Later ---
 // const { errorHandler } = require('./middleware/errorMiddleware');
