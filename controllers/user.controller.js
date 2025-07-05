@@ -50,6 +50,16 @@ exports.getUsers = async (req, res) => {
     }
 };
 
+// Get all users with role 'credited'
+exports.getAllCreditedUsers = async (req, res) => {
+    try {
+        const users = await User.find({ role: 'credited' }).populate(['address', 'assets']);
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // Get a single user by ID
 exports.getUserById = async (req, res) => {
     try {
@@ -66,6 +76,7 @@ exports.updateUser = async (req, res) => {
     try {
         const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
         if (!user) return res.status(404).json({ error: 'User not found' });
+        await user.save();
         res.json(user);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -192,6 +203,26 @@ exports.getUserAssetById = async (req, res) => {
         const asset = await Asset.findById(assetId);
         if (!asset) return res.status(404).json({ error: 'Asset not found' });
         res.json(asset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get daily rate for a user
+exports.getUserDailyRate = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        let dailyRate;
+        if (user.role === 'credited') {
+            dailyRate = user.creditFuelRate;
+        } else {
+            // Get the latest admin (or you can use a specific admin if needed)
+            const admin = await require('../models/Admin.model').findOne().sort({ createdAt: -1 });
+            if (!admin) return res.status(404).json({ error: 'Admin data not found' });
+            dailyRate = admin.dailyRate;
+        }
+        res.json({ userId: user._id, role: user.role, dailyRate });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

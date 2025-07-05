@@ -8,8 +8,7 @@ const upload = multer({ storage: storage });
 // Create Admin
 const createAdmin = async (req, res) => {
     try {
-        const { name, phone, email } = req.body;
-        const admin = new Admin({ name, phone, email });
+        const admin = new Admin(req.body);
         await admin.save();
         res.status(201).json(admin);
     } catch (error) {
@@ -59,10 +58,10 @@ const getAdminById = async (req, res) => {
 // Update Admin
 const updateAdmin = async (req, res) => {
     try {
-        const { name, phone, email } = req.body;
+        // Allow updating all fields in req.body
         const admin = await Admin.findByIdAndUpdate(
             req.params.id,
-            { name, phone, email },
+            req.body,
             { new: true, runValidators: true }
         );
         if (!admin) return res.status(404).json({ message: 'Admin not found' });

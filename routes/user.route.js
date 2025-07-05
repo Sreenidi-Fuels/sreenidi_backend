@@ -35,4 +35,10 @@ router.get('/:userId/address/:addressId', userController.getUserAddressById);
 // Get a single asset of a user by userId and assetId
 router.get('/:userId/asset/:assetId', userController.getUserAssetById);
 
+// Get daily rate for a user
+router.get('/:id/dailyRate', userController.getUserDailyRate);
+
+// Get all users with role 'credited'
+router.get('/credited/all', userController.getAllCreditedUsers);
+
 module.exports = router;

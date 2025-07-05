@@ -357,30 +357,35 @@ exports.validateStopDispenseOtp = async (req, res) => {
     }
 };
 
-// Repeat a completed order for a user by userId and orderId
+// Repeat the last completed order for a user by userId
 exports.repeatCompletedOrder = async (req, res) => {
     try {
-        const { userId, orderId } = req.params;
-        // Find the completed order for this user
-        const prevOrder = await Order.findOne({
-            _id: orderId,
+        const { userId } = req.params;
+        // Use the same logic as getCompletedOrdersByUserId, but only get the most recent one
+        const lastCompletedOrder = await Order.findOne({
             userId: userId,
             'tracking.dispatch.status': 'completed'
-        });
-        if (!prevOrder) return res.status(404).json({ error: 'Completed order not found for this user' });
+        })
+        .sort({ createdAt: -1 })
+        .populate('shippingAddress')
+        .populate('billingAddress')
+        .populate('asset');
+        if (!lastCompletedOrder) {
+            return res.status(404).json({ error: 'No completed order found for this user' });
+        }
 
         // Prepare new order data (copy fields except _id, timestamps, and tracking)
         const newOrderData = {
-            userId: prevOrder.userId,
-            shippingAddress: prevOrder.shippingAddress,
-            billingAddress: prevOrder.billingAddress,
-            fuelQuantity: prevOrder.fuelQuantity,
-            amount: prevOrder.amount,
-            deliveryMode: prevOrder.deliveryMode,
-            deliveryDate: prevOrder.deliveryDate,
-            orderType: prevOrder.orderType,
-            paymentType: prevOrder.paymentType,
-            asset: prevOrder.asset
+            userId: lastCompletedOrder.userId,
+            shippingAddress: lastCompletedOrder.shippingAddress._id || lastCompletedOrder.shippingAddress,
+            billingAddress: lastCompletedOrder.billingAddress._id || lastCompletedOrder.billingAddress,
+            fuelQuantity: lastCompletedOrder.fuelQuantity,
+            amount: lastCompletedOrder.amount,
+            deliveryMode: lastCompletedOrder.deliveryMode,
+            deliveryDate: lastCompletedOrder.deliveryDate,
+            orderType: lastCompletedOrder.orderType,
+            paymentType: lastCompletedOrder.paymentType,
+            asset: lastCompletedOrder.asset?._id || lastCompletedOrder.asset
             // tracking will be auto-generated
         };
 
