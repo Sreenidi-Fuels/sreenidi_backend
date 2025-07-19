@@ -87,4 +87,7 @@ router.get('/user/:userId/count/last-week', orderController.getUserOrderCountLas
 // Get the total number of liters ordered by a user
 router.get('/user/:userId/total-liters', orderController.getUserTotalLitersOrdered);
 
+// Route to get all completed orders from all drivers (admin view)
+router.get('/admin/completed-orders/drivers', orderController.getAllCompletedOrdersByDrivers);
+
 module.exports = router;

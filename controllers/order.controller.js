@@ -569,3 +569,31 @@ exports.getAllDriverOngoingOrders = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// Get completed orders for all drivers (for admin)
+exports.getCompletedOrdersForAllDrivers = async (req, res) => {
+    try {
+        const orders = await Order.find({ 'tracking.dispatch.status': 'completed' })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
+        maskDeliveryImageInArray(orders);
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get completed orders from all drivers (admin view)
+exports.getAllCompletedOrdersByDrivers = async (req, res) => {
+    try {
+        const orders = await Order.find({ 'tracking.dispatch.status': 'completed' })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
+        maskDeliveryImageInArray(orders);
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
