@@ -41,4 +41,7 @@ router.get('/:id/dailyRate', userController.getUserDailyRate);
 // Get all users with role 'credited'
 router.get('/credited/all', userController.getAllCreditedUsers);
 
+// Update route for getting a user by phone number
+router.get('/phone/:phoneNumber', userController.getUserByPhoneNumber);
+
 module.exports = router;

@@ -71,6 +71,21 @@ exports.getUserById = async (req, res) => {
     }
 };
 
+// Get a single user by phone number
+exports.getUserByPhoneNumber = async (req, res) => {
+    try {
+        const phoneNumber = "+91"+req.params.phoneNumber;
+        if (!phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
+
+        const user = await User.findOne({ phoneNumber: phoneNumber }).populate(['address', 'assets']);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // Update a user by ID
 exports.updateUser = async (req, res) => {
     try {

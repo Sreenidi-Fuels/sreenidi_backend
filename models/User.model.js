@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const UserSchema = new mongoose.Schema({
     name: { type: String },
     email: { type: String, unique: true },
-    phoneNumber: { type: String, required: true },
+    phoneNumber: { type: String, required: true, unique: true },
     companyName: { type: String },
     gstNumber: { type: String },
     address: [{ type: mongoose.Schema.Types.ObjectId, ref: "Address" }],
