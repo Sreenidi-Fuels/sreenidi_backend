@@ -92,10 +92,6 @@ const OrderSchema = new mongoose.Schema(
     deliveredLiters: {
       type: Number
     },
-    deliveryImage: {
-      data: Buffer,
-      contentType: String
-    },
     receiverDetails: {
       type: {
         type: String,

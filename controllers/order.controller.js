@@ -1,22 +1,6 @@
 const Order = require('../models/Order.model.js');
 const mongoose = require('mongoose');
 
-function maskDeliveryImage(order) {
-    if (order && order.deliveryImage) {
-        // Only keep contentType, optionally add a flag or image endpoint
-        order.deliveryImage = {
-            contentType: order.deliveryImage.contentType || null,
-            hasImage: !!order.deliveryImage.data
-        };
-    }
-}
-
-function maskDeliveryImageInArray(orders) {
-    if (Array.isArray(orders)) {
-        orders.forEach(maskDeliveryImage);
-    }
-}
-
 // Create a new normal order
 exports.createOrder = async (req, res) => {
     try {
@@ -27,7 +11,6 @@ exports.createOrder = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
-        maskDeliveryImage(order);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -51,7 +34,6 @@ exports.createDirectCreditOrder = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
-        maskDeliveryImage(order);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -74,7 +56,6 @@ exports.createDirectCashOrder = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
-        maskDeliveryImage(order);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -88,7 +69,6 @@ exports.getOrders = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -103,7 +83,6 @@ exports.getOrderById = async (req, res) => {
             .populate('billingAddress')
             .populate('asset');
         if (!order) return res.status(404).json({ error: 'Order not found' });
-        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -119,7 +98,6 @@ exports.getOrdersByUserId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -137,7 +115,6 @@ exports.getLastOrderByUserId = async (req, res) => {
             .populate('billingAddress')
             .populate('asset');
         if (!lastOrder) return res.status(404).json({ error: 'No orders found for this user' });
-        maskDeliveryImage(lastOrder);
         res.json(lastOrder);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -153,7 +130,6 @@ exports.getOrdersByDriverId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -169,7 +145,6 @@ exports.getCompletedOrdersByUserId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -185,7 +160,6 @@ exports.getCompletedOrdersByDriverId = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -204,7 +178,6 @@ exports.getOngoingOrdersByUserId = async (req, res) => {
         .populate('shippingAddress')
         .populate('billingAddress')
         .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -227,7 +200,6 @@ exports.updateOrder = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImage(updatedOrder);
         res.json(updatedOrder);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -239,7 +211,6 @@ exports.deleteOrder = async (req, res) => {
     try {
         const order = await Order.findByIdAndDelete(req.params.id);
         if (!order) return res.status(404).json({ error: 'Order not found' });
-        maskDeliveryImage(order);
         res.json({ message: 'Order deleted successfully', order });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -261,7 +232,6 @@ exports.acceptOrder = async (req, res) => {
         // Update order confirmation status
         order.tracking.orderConfirmation.status = status;
         await order.save();
-        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -281,7 +251,6 @@ exports.assignDriver = async (req, res) => {
 
         order.tracking.driverAssignment.driverId = driverId;
         await order.save();
-        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -305,7 +274,6 @@ exports.updateDispatchStatus = async (req, res) => {
         order.tracking.dispatch.status = status;
         order.tracking.dispatch.dispatchedAt = new Date();
         await order.save();
-        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -324,7 +292,6 @@ exports.validateStartDispenseOtp = async (req, res) => {
         if (order.tracking.fuelDispense.startDispenseOtp === Number(otp) && order.tracking.fuelDispense.startVerified === false) {
             order.tracking.fuelDispense.startVerified = true;
             await order.save();
-            maskDeliveryImage(order);
             return res.json({ success: true, message: 'OTP verified successfully', order });
         } else {
             return res.status(400).json({ success: false, error: 'Invalid OTP/ Already started dispensing' });
@@ -347,7 +314,6 @@ exports.validateStopDispenseOtp = async (req, res) => {
             order.tracking.fuelDispense.stopVerified = true;
             order.tracking.dispatch.status = 'completed'
             await order.save();
-            maskDeliveryImage(order);
             return res.json({ success: true, message: 'OTP verified succesfully', order });
         }else{
             return res.status(400).json({ success: false, error: 'Invalid OTP' });
@@ -397,7 +363,6 @@ exports.repeatCompletedOrder = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
-        maskDeliveryImage(newOrder);
         res.status(201).json(newOrder);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -416,7 +381,6 @@ exports.getAllCompletedOrders = async (req, res) => {
         .populate('shippingAddress')
         .populate('billingAddress')
         .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -445,7 +409,6 @@ exports.updateDriverDeliveryDetails = async (req, res) => {
             { path: 'billingAddress' },
             { path: 'asset' }
         ]);
-        maskDeliveryImage(order);
         res.json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -508,7 +471,6 @@ exports.getAllCurrentOrders = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -525,7 +487,6 @@ exports.getAllCurrentAssignedOrders = async (req, res) => {
         .populate('shippingAddress')
         .populate('billingAddress')
         .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -544,7 +505,6 @@ exports.getAllUserAcceptanceOrders = async (req, res) => {
         .populate('shippingAddress')
         .populate('billingAddress')
         .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -563,7 +523,6 @@ exports.getAllDriverOngoingOrders = async (req, res) => {
         .populate('shippingAddress')
         .populate('billingAddress')
         .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -577,7 +536,6 @@ exports.getCompletedOrdersForAllDrivers = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -591,7 +549,6 @@ exports.getAllCompletedOrdersByDrivers = async (req, res) => {
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset');
-        maskDeliveryImageInArray(orders);
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
