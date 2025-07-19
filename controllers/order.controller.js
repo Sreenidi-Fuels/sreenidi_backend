@@ -1,16 +1,24 @@
 const Order = require('../models/Order.model.js');
 const mongoose = require('mongoose');
 
+// Update population logic to include driver details and vehicle details
+const populateOptions = [
+    { path: 'shippingAddress' },
+    { path: 'billingAddress' },
+    { path: 'asset' },
+    {
+        path: 'tracking.driverAssignment.driverId',
+        populate: { path: 'vehicleDetails' },
+        select: 'name mobile vehicleDetails'
+    }
+];
+
 // Create a new normal order
 exports.createOrder = async (req, res) => {
     try {
         const order = new Order(req.body);
         await order.save();
-        await order.populate([
-            { path: 'shippingAddress' },
-            { path: 'billingAddress' },
-            { path: 'asset' }
-        ]);
+        await order.populate(populateOptions);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -29,11 +37,7 @@ exports.createDirectCreditOrder = async (req, res) => {
         };
         const order = new Order(orderData);
         await order.save();
-        await order.populate([
-            { path: 'shippingAddress' },
-            { path: 'billingAddress' },
-            { path: 'asset' }
-        ]);
+        await order.populate(populateOptions);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -51,11 +55,7 @@ exports.createDirectCashOrder = async (req, res) => {
         };
         const order = new Order(orderData);
         await order.save();
-        await order.populate([
-            { path: 'shippingAddress' },
-            { path: 'billingAddress' },
-            { path: 'asset' }
-        ]);
+        await order.populate(populateOptions);
         res.status(201).json(order);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -68,7 +68,8 @@ exports.getOrders = async (req, res) => {
         const orders = await Order.find()
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' } });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -81,7 +82,8 @@ exports.getOrderById = async (req, res) => {
         const order = await Order.findById(req.params.id)
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' } });
         if (!order) return res.status(404).json({ error: 'Order not found' });
         res.json(order);
     } catch (err) {
@@ -97,7 +99,8 @@ exports.getOrdersByUserId = async (req, res) => {
         const orders = await Order.find({ userId: userId })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -113,7 +116,8 @@ exports.getLastOrderByUserId = async (req, res) => {
             .sort({ createdAt: -1 })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         if (!lastOrder) return res.status(404).json({ error: 'No orders found for this user' });
         res.json(lastOrder);
     } catch (err) {
@@ -129,7 +133,8 @@ exports.getOrdersByDriverId = async (req, res) => {
         const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' } });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -144,7 +149,8 @@ exports.getCompletedOrdersByUserId = async (req, res) => {
         const orders = await Order.find({ userId: userId, 'tracking.dispatch.status': 'completed' })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -159,7 +165,8 @@ exports.getCompletedOrdersByDriverId = async (req, res) => {
         const orders = await Order.find({ 'tracking.driverAssignment.driverId': driverId, 'tracking.dispatch.status': 'completed' })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' } });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -199,7 +206,8 @@ exports.updateOrder = async (req, res) => {
         const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(updatedOrder);
     } catch (err) {
         res.status(400).json({ error: err.message });
@@ -335,7 +343,8 @@ exports.repeatCompletedOrder = async (req, res) => {
         .sort({ createdAt: -1 })
         .populate('shippingAddress')
         .populate('billingAddress')
-        .populate('asset');
+        .populate('asset')
+        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         if (!lastCompletedOrder) {
             return res.status(404).json({ error: 'No completed order found for this user' });
         }
@@ -361,7 +370,12 @@ exports.repeatCompletedOrder = async (req, res) => {
         await newOrder.populate([
             { path: 'shippingAddress' },
             { path: 'billingAddress' },
-            { path: 'asset' }
+            { path: 'asset' },
+            {
+                path: 'tracking.driverAssignment.driverId',
+                populate: { path: 'vehicleDetails' },
+                select: 'name mobile vehicleDetails'
+            }
         ]);
         res.status(201).json(newOrder);
     } catch (err) {
@@ -380,7 +394,8 @@ exports.getAllCompletedOrders = async (req, res) => {
         })
         .populate('shippingAddress')
         .populate('billingAddress')
-        .populate('asset');
+        .populate('asset')
+        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -407,7 +422,12 @@ exports.updateDriverDeliveryDetails = async (req, res) => {
         await order.populate([
             { path: 'shippingAddress' },
             { path: 'billingAddress' },
-            { path: 'asset' }
+            { path: 'asset' },
+            {
+                path: 'tracking.driverAssignment.driverId',
+                populate: { path: 'vehicleDetails' },
+                select: 'name mobile vehicleDetails'
+            }
         ]);
         res.json(order);
     } catch (err) {
@@ -470,7 +490,8 @@ exports.getAllCurrentOrders = async (req, res) => {
         const orders = await Order.find({ 'tracking.dispatch.status': { $ne: 'completed' } })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -486,7 +507,8 @@ exports.getAllCurrentAssignedOrders = async (req, res) => {
         })
         .populate('shippingAddress')
         .populate('billingAddress')
-        .populate('asset');
+        .populate('asset')
+        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -504,7 +526,8 @@ exports.getAllUserAcceptanceOrders = async (req, res) => {
         })
         .populate('shippingAddress')
         .populate('billingAddress')
-        .populate('asset');
+        .populate('asset')
+        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -522,7 +545,8 @@ exports.getAllDriverOngoingOrders = async (req, res) => {
         })
         .populate('shippingAddress')
         .populate('billingAddress')
-        .populate('asset');
+        .populate('asset')
+        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -535,7 +559,8 @@ exports.getCompletedOrdersForAllDrivers = async (req, res) => {
         const orders = await Order.find({ 'tracking.dispatch.status': 'completed' })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -548,7 +573,8 @@ exports.getAllCompletedOrdersByDrivers = async (req, res) => {
         const orders = await Order.find({ 'tracking.dispatch.status': 'completed' })
             .populate('shippingAddress')
             .populate('billingAddress')
-            .populate('asset');
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });

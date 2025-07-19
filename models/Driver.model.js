@@ -6,9 +6,18 @@ const DriverSchema = mongoose.Schema({
         required: true
     },
     mobile: {
-        type:String,
+        type: String,
         required: true
+    },
+    vehicleDetails: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Vehicle",
+        required: false
+    },
+    creditFuelRate: {
+        type: Number,
+        default: 0.0
     }
-}, {timestamps: true});
+}, { timestamps: true });
 
 module.exports = mongoose.model("Driver", DriverSchema);
