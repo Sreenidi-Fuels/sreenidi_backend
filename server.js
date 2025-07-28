@@ -34,6 +34,7 @@ app.use('/api/admin', require('./routes/admin.route'));
 app.use('/api/assets', require('./routes/asset.route'));
 app.use('/api/addresses', require('./routes/address.route'));
 app.use('/api/vehicle', require('./routes/vehicle.route'));
+app.use('/api/ccavenue', require('./routes/ccavenue.route'));
 
 // --- Error Handling Middleware Later ---
 // const { errorHandler } = require('./middleware/errorMiddleware');

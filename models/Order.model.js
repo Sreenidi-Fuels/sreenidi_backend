@@ -80,7 +80,42 @@ const OrderSchema = new mongoose.Schema(
     },
     paymentType: {
       type: String,
-      enum: ['credit', 'cash'],
+      enum: ['credit', 'cash', 'online'],
+    },
+    paymentDetails: {
+      status: {
+        type: String,
+        enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
+        default: 'pending'
+      },
+      method: {
+        type: String,
+        enum: ['ccavenue', 'cash', 'credit'],
+        default: function() {
+          return this.paymentType === 'online' ? 'ccavenue' : this.paymentType;
+        }
+      },
+      transactionId: String,
+      bankRefNo: String,
+      trackingId: String,
+      paymentMode: String, // Card, NetBanking, UPI, etc.
+      bankName: String,
+      amount: Number,
+      currency: {
+        type: String,
+        default: 'INR'
+      },
+      paidAt: Date,
+      ccavenueResponse: {
+        type: mongoose.Schema.Types.Mixed,
+        select: false // Don't include in normal queries for security
+      },
+      failureReason: String,
+      retryCount: {
+        type: Number,
+        default: 0
+      },
+      lastPaymentAttempt: Date
     },
     asset: {
       type: mongoose.Schema.Types.ObjectId,

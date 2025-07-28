@@ -5,16 +5,13 @@ const AdminSchema = new mongoose.Schema({
     phone: {
         type: String,
         required: true,
-        validate: {
-            validator: function(v) {
-                // Allow only +91 followed by 10 digits, total length 13
-                return /^\+91\d{10}$/.test(v);
-            },
-            message: props => `${props.value} is not a valid phone number! It must only be 10 digits.`
-        },
-        maxlength: 13
+        unique: true
     },
     email: { type: String, required: true, unique: true },
+    password: {
+        type: String,
+        required: true
+    },
     images: [{
         data: Buffer,
         contentType: String

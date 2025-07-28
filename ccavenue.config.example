@@ -1,0 +1,31 @@
+# CCAvenue Payment Gateway Configuration
+# Copy these settings to your .env file and replace with actual values
+
+# Base URL for your API (used for payment callbacks)
+BASE_URL=https://api.sreenidhifuels.com
+
+# CCAvenue Merchant Details
+# Get these from your CCAvenue merchant account dashboard
+CCAVENUE_MERCHANT_ID=your_merchant_id_here
+CCAVENUE_ACCESS_CODE=your_access_code_here  
+CCAVENUE_WORKING_KEY=your_working_key_here
+
+# Optional: Node Environment
+NODE_ENV=production
+
+# Database Configuration (if not already set)
+MONGODB_URI=mongodb://localhost:27017/sreenidi_backend
+
+# Server Configuration (if not already set)
+PORT=3000
+
+# Example values for testing (replace with actual):
+# CCAVENUE_MERCHANT_ID=123456
+# CCAVENUE_ACCESS_CODE=AVXP01234567
+# CCAVENUE_WORKING_KEY=ABCD1234567890ABCD1234567890ABCD
+
+# Security Notes:
+# - Keep these values secret and never commit them to version control
+# - Use different values for development/staging/production environments
+# - Regularly rotate your working key as per CCAvenue security guidelines
+# - Ensure your BASE_URL is accessible via HTTPS for production 
