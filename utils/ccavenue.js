@@ -136,6 +136,15 @@ function generatePaymentRequest(orderData, merchantId, accessCode) {
         `customer_identifier=${billingEmail || billingTel || orderId}`
     ].join('&');
     
+    // DEBUG: Log the exact payload being encrypted (temporarily for debugging)
+    console.log('=== CCAvenue Encryption Debug ===');
+    console.log('Raw Payment Data Length:', paymentData.length);
+    console.log('Raw Payment Data (first 200 chars):', paymentData.substring(0, 200));
+    console.log('Merchant ID in payload:', merchantId);
+    console.log('Access Code in payload:', accessCode);
+    console.log('Working Key length for encryption:', process.env.CCAVENUE_WORKING_KEY ? process.env.CCAVENUE_WORKING_KEY.length : 'undefined');
+    console.log('=== End Encryption Debug ===');
+    
     return {
         merchant_id: merchantId,
         access_code: accessCode,

@@ -119,6 +119,19 @@ exports.initiatePayment = async (req, res) => {
             CCAVENUE_ACCESS_CODE
         );
 
+        // DEBUG: Log the exact data being sent (temporarily for debugging)
+        console.log('=== CCAvenue Debug Info ===');
+        console.log('Merchant ID length:', CCAVENUE_MERCHANT_ID.length);
+        console.log('Access Code length:', CCAVENUE_ACCESS_CODE.length);
+        console.log('Working Key length:', CCAVENUE_WORKING_KEY.length);
+        console.log('Payment Data Keys:', Object.keys(paymentData));
+        console.log('Order ID:', paymentData.orderId);
+        console.log('Amount:', paymentData.amount);
+        console.log('Customer Name:', paymentData.billingName);
+        console.log('Customer Email:', paymentData.billingEmail);
+        console.log('Redirect URL:', paymentData.redirectUrl);
+        console.log('=== End Debug Info ===');
+
         // Update order with payment initiation details
         const updateData = {
             paymentType: 'online',

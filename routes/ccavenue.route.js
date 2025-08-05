@@ -109,4 +109,112 @@ router.get('/test-config', (req, res) => {
     });
 });
 
+/**
+ * @route   GET /api/ccavenue/debug-credentials
+ * @desc    Debug CCAvenue credentials format (temporarily enabled for production debugging)
+ * @access  Private
+ */
+router.get('/debug-credentials', (req, res) => {
+    // Temporarily allow in production for debugging
+    // if (process.env.NODE_ENV === 'production') {
+    //     return res.status(404).json({ error: 'Not found' });
+    // }
+    
+    const { CCAVENUE_MERCHANT_ID, CCAVENUE_ACCESS_CODE, CCAVENUE_WORKING_KEY, BASE_URL } = process.env;
+    
+    const debug = {
+        merchantId: {
+            exists: !!CCAVENUE_MERCHANT_ID,
+            length: CCAVENUE_MERCHANT_ID ? CCAVENUE_MERCHANT_ID.length : 0,
+            startsWithDigit: CCAVENUE_MERCHANT_ID ? /^\d/.test(CCAVENUE_MERCHANT_ID) : false,
+            preview: CCAVENUE_MERCHANT_ID ? CCAVENUE_MERCHANT_ID.substring(0, 3) + '***' : 'missing'
+        },
+        accessCode: {
+            exists: !!CCAVENUE_ACCESS_CODE,
+            length: CCAVENUE_ACCESS_CODE ? CCAVENUE_ACCESS_CODE.length : 0,
+            startsWithAV: CCAVENUE_ACCESS_CODE ? CCAVENUE_ACCESS_CODE.startsWith('AV') : false,
+            preview: CCAVENUE_ACCESS_CODE ? CCAVENUE_ACCESS_CODE.substring(0, 4) + '***' : 'missing'
+        },
+        workingKey: {
+            exists: !!CCAVENUE_WORKING_KEY,
+            length: CCAVENUE_WORKING_KEY ? CCAVENUE_WORKING_KEY.length : 0,
+            isHex: CCAVENUE_WORKING_KEY ? /^[A-Fa-f0-9]+$/.test(CCAVENUE_WORKING_KEY) : false,
+            preview: CCAVENUE_WORKING_KEY ? CCAVENUE_WORKING_KEY.substring(0, 4) + '***' : 'missing'
+        },
+        baseUrl: BASE_URL,
+        environment: process.env.NODE_ENV || 'development'
+    };
+    
+    res.status(200).json({
+        success: true,
+        debug
+    });
+});
+
+/**
+ * @route   GET /api/ccavenue/validate-credentials
+ * @desc    Validate CCAvenue credentials format and detect common issues
+ * @access  Private
+ */
+router.get('/validate-credentials', (req, res) => {
+    const { CCAVENUE_MERCHANT_ID, CCAVENUE_ACCESS_CODE, CCAVENUE_WORKING_KEY, BASE_URL } = process.env;
+    
+    const validation = {
+        merchantId: {
+            exists: !!CCAVENUE_MERCHANT_ID,
+            length: CCAVENUE_MERCHANT_ID ? CCAVENUE_MERCHANT_ID.length : 0,
+            isNumeric: CCAVENUE_MERCHANT_ID ? /^\d+$/.test(CCAVENUE_MERCHANT_ID.trim()) : false,
+            hasWhitespace: CCAVENUE_MERCHANT_ID ? /\s/.test(CCAVENUE_MERCHANT_ID) : false,
+            preview: CCAVENUE_MERCHANT_ID ? CCAVENUE_MERCHANT_ID.substring(0, 3) + '***' : 'missing',
+            issues: []
+        },
+        accessCode: {
+            exists: !!CCAVENUE_ACCESS_CODE,
+            length: CCAVENUE_ACCESS_CODE ? CCAVENUE_ACCESS_CODE.length : 0,
+            startsWithAV: CCAVENUE_ACCESS_CODE ? CCAVENUE_ACCESS_CODE.trim().startsWith('AV') : false,
+            hasWhitespace: CCAVENUE_ACCESS_CODE ? /\s/.test(CCAVENUE_ACCESS_CODE) : false,
+            preview: CCAVENUE_ACCESS_CODE ? CCAVENUE_ACCESS_CODE.substring(0, 4) + '***' : 'missing',
+            issues: []
+        },
+        workingKey: {
+            exists: !!CCAVENUE_WORKING_KEY,
+            length: CCAVENUE_WORKING_KEY ? CCAVENUE_WORKING_KEY.length : 0,
+            isHex: CCAVENUE_WORKING_KEY ? /^[A-Fa-f0-9]+$/.test(CCAVENUE_WORKING_KEY.trim()) : false,
+            hasWhitespace: CCAVENUE_WORKING_KEY ? /\s/.test(CCAVENUE_WORKING_KEY) : false,
+            preview: CCAVENUE_WORKING_KEY ? CCAVENUE_WORKING_KEY.substring(0, 4) + '***' : 'missing',
+            issues: []
+        }
+    };
+    
+    // Check for common issues
+    if (validation.merchantId.exists) {
+        if (!validation.merchantId.isNumeric) validation.merchantId.issues.push('Should be numeric only');
+        if (validation.merchantId.hasWhitespace) validation.merchantId.issues.push('Contains whitespace');
+        if (validation.merchantId.length < 5 || validation.merchantId.length > 8) validation.merchantId.issues.push('Unusual length (should be 5-8 digits)');
+    }
+    
+    if (validation.accessCode.exists) {
+        if (!validation.accessCode.startsWithAV) validation.accessCode.issues.push('Should start with "AV"');
+        if (validation.accessCode.hasWhitespace) validation.accessCode.issues.push('Contains whitespace');
+        if (validation.accessCode.length < 10 || validation.accessCode.length > 15) validation.accessCode.issues.push('Unusual length');
+    }
+    
+    if (validation.workingKey.exists) {
+        if (!validation.workingKey.isHex) validation.workingKey.issues.push('Should be hexadecimal (A-F, 0-9 only)');
+        if (validation.workingKey.hasWhitespace) validation.workingKey.issues.push('Contains whitespace');
+        if (validation.workingKey.length !== 32) validation.workingKey.issues.push('Should be exactly 32 characters');
+    }
+    
+    const hasIssues = validation.merchantId.issues.length > 0 || 
+                     validation.accessCode.issues.length > 0 || 
+                     validation.workingKey.issues.length > 0;
+    
+    res.status(200).json({
+        success: !hasIssues,
+        message: hasIssues ? 'Credential format issues detected' : 'All credentials appear properly formatted',
+        validation,
+        baseUrl: BASE_URL
+    });
+});
+
 module.exports = router; 
