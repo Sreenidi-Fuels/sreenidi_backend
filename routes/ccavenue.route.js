@@ -217,4 +217,50 @@ router.get('/validate-credentials', (req, res) => {
     });
 });
 
+/**
+ * @route   GET /api/ccavenue/test-order/:orderId/:userId
+ * @desc    Test order lookup for debugging
+ * @access  Private
+ */
+router.get('/test-order/:orderId/:userId', async (req, res) => {
+    try {
+        const { orderId, userId } = req.params;
+        const Order = require('../models/Order.model.js');
+        
+        console.log('Testing order lookup:', { orderId, userId });
+        
+        // Try different lookup methods
+        const orderById = await Order.findById(orderId);
+        const orderByQuery = await Order.findOne({ _id: orderId, userId: userId });
+        const orderWithPopulate = await Order.findOne({ _id: orderId, userId: userId })
+            .populate('userId', 'name mobile email');
+        
+        res.json({
+            success: true,
+            debug: {
+                orderId,
+                userId,
+                orderById: !!orderById,
+                orderByQuery: !!orderByQuery,
+                orderWithPopulate: !!orderWithPopulate,
+                orderDetails: orderById ? {
+                    id: orderById._id,
+                    userId: orderById.userId,
+                    amount: orderById.amount
+                } : null,
+                populatedUser: orderWithPopulate?.userId ? {
+                    name: orderWithPopulate.userId.name,
+                    email: orderWithPopulate.userId.email
+                } : null
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+});
+
 module.exports = router; 

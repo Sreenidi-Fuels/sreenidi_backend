@@ -40,6 +40,12 @@ exports.initiatePayment = async (req, res) => {
         }
 
         // Validate order exists and belongs to user
+        console.log('=== Order Lookup Debug ===');
+        console.log('Looking for orderId:', orderId);
+        console.log('Looking for userId:', userId);
+        console.log('OrderId type:', typeof orderId);
+        console.log('UserId type:', typeof userId);
+        
         const order = await Order.findOne({ 
             _id: orderId, 
             userId: userId 
@@ -49,10 +55,32 @@ exports.initiatePayment = async (req, res) => {
             { path: 'shippingAddress' }
         ]);
 
+        console.log('Order found:', !!order);
+        if (order) {
+            console.log('Order ID from DB:', order._id);
+            console.log('User ID from DB:', order.userId);
+            console.log('User populated:', !!order.userId);
+        }
+        console.log('=== End Order Debug ===');
+
         if (!order) {
+            console.error(`Order not found - orderId: ${orderId}, userId: ${userId}`);
             return res.status(404).json({
                 success: false,
                 error: 'Order not found or unauthorized'
+            });
+        }
+
+        // Additional safety check for populated user data
+        if (!order.userId || !order.userId.name) {
+            console.error('Order found but user data not properly populated:', {
+                orderExists: !!order,
+                userIdExists: !!order.userId,
+                userNameExists: order.userId ? !!order.userId.name : false
+            });
+            return res.status(500).json({
+                success: false,
+                error: 'Order data incomplete - user information missing'
             });
         }
 
