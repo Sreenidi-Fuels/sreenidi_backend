@@ -196,7 +196,7 @@ router.get('/validate-credentials', (req, res) => {
     if (validation.accessCode.exists) {
         if (!validation.accessCode.startsWithAV) validation.accessCode.issues.push('Should start with "AV"');
         if (validation.accessCode.hasWhitespace) validation.accessCode.issues.push('Contains whitespace');
-        if (validation.accessCode.length < 10 || validation.accessCode.length > 15) validation.accessCode.issues.push('Unusual length');
+        if (validation.accessCode.length < 8 || validation.accessCode.length > 20) validation.accessCode.issues.push('Unusual length (should be 8-20 characters)');
     }
     
     if (validation.workingKey.exists) {
