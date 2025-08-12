@@ -179,11 +179,15 @@ exports.initiatePayment = async (req, res) => {
         console.log(`Payment initiated for order ${orderId}, amount: ${amount}, user: ${userId}`);
 
         // Response with payment form data
+        const ccavenueBaseUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://secure.ccavenue.com' 
+            : 'https://test.ccavenue.com';
+        
         res.status(200).json({
             success: true,
             message: 'Payment request generated successfully',
             data: {
-                paymentUrl: 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction',
+                paymentUrl: `${ccavenueBaseUrl}/transaction/transaction.do?command=initiateTransaction`,
                 formData: {
                     merchant_id: paymentRequest.merchant_id,
                     access_code: paymentRequest.access_code,

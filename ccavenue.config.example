@@ -10,7 +10,13 @@ CCAVENUE_MERCHANT_ID=your_merchant_id_here
 CCAVENUE_ACCESS_CODE=your_access_code_here  
 CCAVENUE_WORKING_KEY=your_working_key_here
 
+# CCAvenue URLs (automatically selected based on NODE_ENV)
+# Test Environment: https://test.ccavenue.com
+# Production Environment: https://secure.ccavenue.com
+
 # Optional: Node Environment
+# Set to 'development' or 'test' for test environment
+# Set to 'production' for production environment
 NODE_ENV=production
 
 # Database Configuration (if not already set)
