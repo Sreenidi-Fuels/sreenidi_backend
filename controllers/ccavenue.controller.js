@@ -179,7 +179,7 @@ exports.initiatePayment = async (req, res) => {
         console.log(`Payment initiated for order ${orderId}, amount: ${amount}, user: ${userId}`);
 
         // Response with payment form data
-        const ccavenueBaseUrl = process.env.NODE_ENV === 'production' 
+        const ccavenueBaseUrl = process.env.NODE_ENV === 'development' 
             ? 'https://secure.ccavenue.com' 
             : 'https://test.ccavenue.com';
         
