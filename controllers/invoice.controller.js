@@ -225,7 +225,7 @@ const getInvoicesByOrderId = async (req, res) => {
 const updateInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    const { remarks, status, paymentMethod, destination, rate, amount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId } = req.body;
+    const { remarks, status, paymentMethod, destination, rate, amount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId, vehicleNO, dispatchedThrough } = req.body;
 
     const updateData = {};
     if (remarks !== undefined) updateData.remarks = remarks;
@@ -241,6 +241,13 @@ const updateInvoice = async (req, res) => {
         return res.status(404).json({ success: false, error: 'Vehicle not found' });
       }
       updateData.vehicleId = vehicleId;
+      // Derive linked fields
+      updateData.vehicleNO = vehicle.vehicleNo;
+      updateData.dispatchedThrough = vehicle.fuelCapacity;
+    } else {
+      // Allow direct override if provided without changing the vehicle reference
+      if (vehicleNO !== undefined) updateData.vehicleNO = vehicleNO;
+      if (dispatchedThrough !== undefined) updateData.dispatchedThrough = dispatchedThrough;
     }
 
     // If deliveryCharges/cgst/sgst provided: respect explicit values; otherwise compute taxes from deliveryCharges
