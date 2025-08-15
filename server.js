@@ -21,6 +21,7 @@ app.use((req, res, next) => {
 });
 
 // Body parser middleware
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(morgan(':method :url :status length-:res[content-length]  time-:response-time ms'));
 

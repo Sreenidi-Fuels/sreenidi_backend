@@ -219,105 +219,67 @@ exports.handlePaymentResponse = async (req, res) => {
 
         if (!encResp) {
             console.error('No encrypted response received from CCAvenue');
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid payment response'
-            });
+            return res.redirect('sreedifuels://payment-failed?reason=InvalidResponse');
         }
 
-        // Decrypt the response
         const workingKey = process.env.CCAVENUE_WORKING_KEY;
+        if (!workingKey) {
+            console.error('CCAvenue Working Key is not defined in environment variables.');
+            return res.redirect('sreedifuels://payment-failed?reason=ConfigurationError');
+        }
+
         const decryptedResponse = ccavenueUtils.decrypt(encResp, workingKey);
         const responseData = ccavenueUtils.parseResponse(decryptedResponse);
 
-        // Validate response
+        // IMPORTANT: Validate the response to ensure it is authentic
         if (!ccavenueUtils.validateResponse(responseData)) {
-            console.error('Invalid payment response structure:', responseData);
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid payment response format'
-            });
+            console.error('Invalid payment response structure or signature:', responseData);
+            return res.redirect('sreedifuels://payment-failed?reason=InvalidSignature');
         }
 
         const orderId = responseData.order_id;
+        if (!orderId) {
+            console.error('Order ID not found in CCAvenue response:', responseData);
+            return res.redirect('sreedifuels://payment-failed?reason=InvalidOrderData');
+        }
+
         const paymentStatus = ccavenueUtils.mapPaymentStatus(responseData.order_status);
 
-        // Find the order
+        // Update the order details in the database
         const order = await Order.findById(orderId);
-        if (!order) {
-            console.error(`Order not found for payment response: ${orderId}`);
-            return res.status(404).json({
-                success: false,
-                error: 'Order not found'
-            });
-        }
+        if (order) {
+            const updateData = {
+                $set: {
+                    'paymentDetails.status': paymentStatus,
+                    'paymentDetails.transactionId': responseData.transaction_id || responseData.tracking_id,
+                    'paymentDetails.bankRefNo': responseData.bank_ref_no,
+                    'paymentDetails.trackingId': responseData.tracking_id,
+                    'paymentDetails.paymentMode': responseData.payment_mode,
+                    'paymentDetails.bankName': responseData.bank_name,
+                    'paymentDetails.ccavenueResponse': responseData
+                }
+            };
 
-        // Prepare update data based on payment status
-        const updateData = {
-            $set: {
-                'paymentDetails.status': paymentStatus,
-                'paymentDetails.transactionId': responseData.transaction_id || responseData.tracking_id,
-                'paymentDetails.bankRefNo': responseData.bank_ref_no,
-                'paymentDetails.trackingId': responseData.tracking_id,
-                'paymentDetails.paymentMode': responseData.payment_mode,
-                'paymentDetails.bankName': responseData.bank_name,
-                'paymentDetails.ccavenueResponse': responseData
+            if (paymentStatus === 'completed') {
+                updateData.$set['paymentDetails.paidAt'] = new Date();
+            } else {
+                updateData.$set['paymentDetails.failureReason'] = responseData.failure_message || responseData.status_message;
             }
-        };
-
-        // Set paid date for successful payments
-        if (paymentStatus === 'completed') {
-            updateData.$set['paymentDetails.paidAt'] = new Date();
-            console.log(`Payment completed for order ${orderId}, transaction ID: ${responseData.tracking_id}`);
-        } else {
-            updateData.$set['paymentDetails.failureReason'] = responseData.failure_message || responseData.status_message;
-            console.log(`Payment failed for order ${orderId}, reason: ${responseData.failure_message || responseData.status_message}`);
+            await Order.findByIdAndUpdate(orderId, updateData);
         }
 
-        // Update the order
-        await Order.findByIdAndUpdate(orderId, updateData);
-
-        // Generate deep link for mobile app
-        const deepLink = ccavenueUtils.generateDeepLink(paymentStatus, orderId, {
-            transactionId: responseData.tracking_id,
-            amount: responseData.amount,
-            paymentMode: responseData.payment_mode
-        });
-
-        // Determine response based on payment status
+        // Redirect to the appropriate deep link
         if (paymentStatus === 'completed') {
-            res.status(200).json({
-                success: true,
-                message: 'Payment completed successfully',
-                data: {
-                    orderId,
-                    transactionId: responseData.tracking_id,
-                    amount: responseData.amount,
-                    paymentMode: responseData.payment_mode,
-                    bankRefNo: responseData.bank_ref_no,
-                    deepLink
-                }
-            });
+            console.log(`Payment successful for order: ${orderId}`);
+            res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${responseData.tracking_id}`);
         } else {
-            res.status(400).json({
-                success: false,
-                message: 'Payment failed',
-                data: {
-                    orderId,
-                    status: paymentStatus,
-                    failureReason: responseData.failure_message || responseData.status_message,
-                    deepLink
-                }
-            });
+            console.log(`Payment failed for order: ${orderId}. Status: ${responseData.order_status}`);
+            res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=${responseData.failure_message || responseData.order_status}`);
         }
 
     } catch (error) {
         console.error('CCAvenue Payment Response Error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Payment response processing failed',
-            message: error.message
-        });
+        res.redirect('sreedifuels://payment-failed?reason=ProcessingError');
     }
 };
 
