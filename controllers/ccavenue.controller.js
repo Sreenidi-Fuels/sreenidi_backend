@@ -3,7 +3,6 @@ const User = require('../models/User.model.js');
 const Address = require('../models/Address.model.js');
 const ccavenueUtils = require('../utils/ccavenue.js');
 const mongoose = require('mongoose');
-const LedgerService = require('../services/ledger.service.js');
 
 /**
  * Initiate CCAvenue Payment
@@ -264,51 +263,15 @@ exports.handlePaymentResponse = async (req, res) => {
             if (paymentStatus === 'completed') {
                 updateData.$set['paymentDetails.paidAt'] = new Date();
                 
-                console.log('=== Creating CREDIT Entry for Payment Completion ===');
+                console.log('=== Payment Completed Successfully ===');
                 console.log('Order ID:', orderId);
                 console.log('User ID:', order.userId);
                 console.log('Amount:', order.amount);
                 console.log('Payment Method:', 'ccavenue');
                 console.log('Transaction ID:', responseData.transaction_id || responseData.tracking_id);
                 console.log('Bank Ref No:', responseData.bank_ref_no);
+                console.log('Note: CREDIT entry will be created when invoice is confirmed');
                 
-                // Validate required fields before creating ledger entry
-                if (!order.userId || !order.amount) {
-                    console.error('❌ Missing required fields for ledger entry:', {
-                        userId: order.userId,
-                        amount: order.amount,
-                        orderId: order._id
-                    });
-                } else {
-                    // Create ledger credit entry for successful payment
-                    try {
-                        const ledgerResult = await LedgerService.createCreditEntry(
-                            order.userId,
-                            order._id,
-                            order.amount,
-                            `CCAvenue payment received - ${order.fuelQuantity}L fuel`,
-                            {
-                                paymentMethod: 'ccavenue',
-                                transactionId: responseData.transaction_id || responseData.tracking_id,
-                                bankRefNo: responseData.bank_ref_no,
-                                trackingId: responseData.tracking_id
-                            }
-                        );
-                        
-                        console.log('✅ CREDIT entry created successfully for payment completion:', ledgerResult);
-                        
-                    } catch (ledgerError) {
-                        console.error('❌ CREDIT entry creation failed for payment completion:', ledgerError);
-                        console.error('Error details:', {
-                            message: ledgerError.message,
-                            stack: ledgerError.stack,
-                            userId: order.userId,
-                            orderId: order._id,
-                            amount: order.amount
-                        });
-                        // Don't fail the payment if ledger fails
-                    }
-                }
             } else {
                 updateData.$set['paymentDetails.failureReason'] = responseData.failure_message || responseData.status_message;
             }
