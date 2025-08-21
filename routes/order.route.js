@@ -9,6 +9,9 @@ router.post('/', orderController.createOrder);
 // Create a direct cash order
 router.post('/direct/cash', orderController.createDirectCashOrder);
 
+// Create a direct credit order
+router.post('/direct/credit', orderController.createDirectCreditOrder);
+
 // Get all completed orders (regardless of user)
 router.get('/completed', orderController.getAllCompletedOrders);
 

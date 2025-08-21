@@ -62,11 +62,42 @@ exports.createOrder = async (req, res) => {
         await order.save();
         await order.populate(populateOptions);
         
-        // No ledger entry needed here - CCAvenue controller will create it when payment completes
-        // Ledger entries are created in CCAvenue payment response handler
+        // ✅ FIX: Create DEBIT entry for online/credit orders
+        if (order.paymentType === 'online' || order.paymentType === 'credit') {
+            try {
+                console.log('=== Creating DEBIT Entry for Order ===');
+                console.log('Order ID:', order._id);
+                console.log('User ID:', order.userId);
+                console.log('Amount:', order.amount);
+                console.log('Payment Type:', order.paymentType);
+                console.log('Fuel Quantity:', order.fuelQuantity);
+
+                await LedgerService.createDebitEntry(
+                    order.userId, 
+                    order._id, 
+                    order.amount, 
+                    `Order created - ${order.fuelQuantity}L fuel`
+                );
+
+                console.log('✅ DEBIT entry created successfully for order');
+            } catch (ledgerError) {
+                console.error('❌ DEBIT entry creation failed:', ledgerError);
+                console.error('Error details:', {
+                    message: ledgerError.message,
+                    stack: ledgerError.stack,
+                    userId: order.userId,
+                    orderId: order._id,
+                    amount: order.amount
+                });
+                // Don't fail the order creation if ledger fails
+            }
+        } else {
+            console.log('No ledger entry needed for payment type:', order.paymentType);
+        }
         
         res.status(201).json(await orderWithPricing(order));
     } catch (err) {
+        console.error('Order creation failed:', err);
         res.status(400).json({ error: err.message });
     }
 };
@@ -85,6 +116,56 @@ exports.createDirectCashOrder = async (req, res) => {
         await order.populate(populateOptions);
         res.status(201).json(await orderWithPricing(order));
     } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+// Create a direct credit order
+exports.createDirectCreditOrder = async (req, res) => {
+    try {
+        const orderData = {
+            ...req.body,
+            orderType: 'direct',
+            paymentType: 'credit',
+            deliveryMode: 'earliest', // Direct orders are always immediate
+            asset: req.body.assetId
+        };
+        const order = new Order(orderData);
+        await order.save();
+        await order.populate(populateOptions);
+        
+        // ✅ Create DEBIT entry for direct credit orders
+        try {
+            console.log('=== Creating DEBIT Entry for Direct Credit Order ===');
+            console.log('Order ID:', order._id);
+            console.log('User ID:', order.userId);
+            console.log('Amount:', order.amount);
+            console.log('Payment Type:', order.paymentType);
+            console.log('Fuel Quantity:', order.fuelQuantity);
+
+            await LedgerService.createDebitEntry(
+                order.userId, 
+                order._id, 
+                order.amount,
+                `Direct credit order - ${order.fuelQuantity}L fuel`
+            );
+
+            console.log('✅ DEBIT entry created successfully for direct credit order');
+        } catch (ledgerError) {
+            console.error('❌ DEBIT entry creation failed for direct credit order:', ledgerError);
+            console.error('Error details:', {
+                message: ledgerError.message,
+                stack: ledgerError.stack,
+                userId: order.userId,
+                orderId: order._id,
+                amount: order.amount
+            });
+            // Don't fail the order creation if ledger fails
+        }
+        
+        res.status(201).json(await orderWithPricing(order));
+    } catch (err) {
+        console.error('Direct credit order creation failed:', err);
         res.status(400).json({ error: err.message });
     }
 };

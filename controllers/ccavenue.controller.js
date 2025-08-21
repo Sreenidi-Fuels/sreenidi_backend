@@ -264,7 +264,7 @@ exports.handlePaymentResponse = async (req, res) => {
             if (paymentStatus === 'completed') {
                 updateData.$set['paymentDetails.paidAt'] = new Date();
                 
-                console.log('=== Creating Ledger Entry ===');
+                console.log('=== Creating CREDIT Entry for Payment Completion ===');
                 console.log('Order ID:', orderId);
                 console.log('User ID:', order.userId);
                 console.log('Amount:', order.amount);
@@ -295,10 +295,10 @@ exports.handlePaymentResponse = async (req, res) => {
                             }
                         );
                         
-                        console.log('✅ Ledger entry created successfully:', ledgerResult);
+                        console.log('✅ CREDIT entry created successfully for payment completion:', ledgerResult);
                         
                     } catch (ledgerError) {
-                        console.error('❌ Ledger credit entry creation failed:', ledgerError);
+                        console.error('❌ CREDIT entry creation failed for payment completion:', ledgerError);
                         console.error('Error details:', {
                             message: ledgerError.message,
                             stack: ledgerError.stack,

@@ -3,6 +3,7 @@ const Order = require('../models/Order.model.js');
 const Vehicle = require('../models/Vehicle.model.js');
 const Address = require('../models/Address.model.js');
 const LedgerService = require('../services/ledger.service.js');
+const LedgerEntry = require('../models/LedgerEntry.model.js');  // ← Add LedgerEntry import
 
 // Helpers
 const roundTo2 = (num) => Math.round((Number(num || 0)) * 100) / 100;
@@ -301,6 +302,69 @@ const updateInvoice = async (req, res) => {
 
     if (!invoice) {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
+    }
+
+    // ✅ FIX: Create CREDIT entry when invoice status changes to "confirmed"
+    if (status === 'confirmed') {
+      // Use totalAmount if available, otherwise fallback to amount
+      const creditAmount = invoice.totalAmount || invoice.amount;
+      
+      if (creditAmount && creditAmount > 0) {
+        try {
+          console.log('=== Creating CREDIT Entry for Invoice Confirmation ===');
+          console.log('Invoice ID:', invoice._id);
+          console.log('Order ID:', invoice.orderId._id);
+          console.log('User ID:', invoice.userId._id);
+          console.log('Base Amount:', invoice.amount);
+          console.log('Total Amount:', invoice.totalAmount);
+          console.log('Credit Amount:', creditAmount);
+          console.log('Status:', status);
+
+          // Check if CREDIT entry already exists for this invoice
+          const existingCreditEntry = await LedgerEntry.findOne({
+            invoiceId: invoice._id,
+            type: 'credit'
+          });
+
+          if (existingCreditEntry) {
+            console.log('✅ CREDIT entry already exists for this invoice, skipping creation');
+          } else {
+            const ledgerResult = await LedgerService.createCreditEntry(
+              invoice.userId._id,
+              invoice.orderId._id,
+              creditAmount,  // ← Use totalAmount or amount
+              `Invoice confirmed - ${invoice.fuelQuantity}L fuel (Total: ₹${creditAmount})`,
+              {
+                paymentMethod: 'credit',
+                invoiceId: invoice._id
+              }
+            );
+
+            console.log('✅ CREDIT entry created successfully for invoice confirmation:', ledgerResult);
+          }
+
+        } catch (ledgerError) {
+          console.error('❌ CREDIT entry creation failed for invoice confirmation:', ledgerError);
+          console.error('Error details:', {
+            message: ledgerError.message,
+            stack: ledgerError.stack,
+            invoiceId: invoice._id,
+            orderId: invoice.orderId._id,
+            userId: invoice.userId._id,
+            amount: invoice.amount,
+            totalAmount: invoice.totalAmount,
+            creditAmount: creditAmount
+          });
+          // Don't fail the invoice update if ledger fails
+        }
+      } else {
+        console.log('⚠️ Invoice status changed to confirmed but no amount available for ledger entry');
+        console.log('Amount details:', {
+          amount: invoice.amount,
+          totalAmount: invoice.totalAmount,
+          creditAmount: creditAmount
+        });
+      }
     }
 
     res.status(200).json({ success: true, message: 'Invoice updated successfully', data: invoice });

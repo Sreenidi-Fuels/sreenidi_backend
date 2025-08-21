@@ -47,7 +47,7 @@ class LedgerService {
             // Update user ledger
             userLedger.currentBalance = balanceAfter;
             userLedger.totalDebits += amount;
-            userLedger.outstandingAmount = userLedger.totalDebits - userLedger.totalCredits;
+            userLedger.outstandingAmount = userLedger.totalDebits - userLedger.totalCredits;  // ← Allow negative values
             userLedger.lastTransactionDate = new Date();
             userLedger.lastOrderDate = new Date();
             
@@ -120,7 +120,7 @@ class LedgerService {
             userLedger.currentBalance = balanceAfter;
             userLedger.totalCredits += amount;
             // Outstanding amount = total debits - total credits
-            userLedger.outstandingAmount = Math.max(0, userLedger.totalDebits - userLedger.totalCredits);
+            userLedger.outstandingAmount = userLedger.totalDebits - userLedger.totalCredits;  // ← Allow negative values
             userLedger.lastTransactionDate = new Date();
             userLedger.lastPaymentDate = new Date();
             
