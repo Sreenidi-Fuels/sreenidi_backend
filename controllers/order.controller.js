@@ -2,6 +2,7 @@ const Order = require('../models/Order.model.js');
 const mongoose = require('mongoose');
 const Admin = require('../models/Admin.model.js');
 const User = require('../models/User.model.js');
+const LedgerService = require('../services/ledger.service.js');
 
 async function computeUserPricing(userId) {
     try {
@@ -60,25 +61,10 @@ exports.createOrder = async (req, res) => {
         const order = new Order(req.body);
         await order.save();
         await order.populate(populateOptions);
-        res.status(201).json(await orderWithPricing(order));
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-};
-
-// Create a direct credit order
-exports.createDirectCreditOrder = async (req, res) => {
-    try {
-        const orderData = {
-            ...req.body,
-            orderType: 'direct',
-            paymentType: 'credit',
-            deliveryMode: 'earliest', // Direct orders are always immediate
-            asset: req.body.assetId
-        };
-        const order = new Order(orderData);
-        await order.save();
-        await order.populate(populateOptions);
+        
+        // No ledger entry needed here - CCAvenue controller will create it when payment completes
+        // Ledger entries are created in CCAvenue payment response handler
+        
         res.status(201).json(await orderWithPricing(order));
     } catch (err) {
         res.status(400).json({ error: err.message });

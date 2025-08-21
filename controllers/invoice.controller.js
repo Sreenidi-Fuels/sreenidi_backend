@@ -2,6 +2,7 @@ const Invoice = require('../models/Invoice.model.js');
 const Order = require('../models/Order.model.js');
 const Vehicle = require('../models/Vehicle.model.js');
 const Address = require('../models/Address.model.js');
+const LedgerService = require('../services/ledger.service.js');
 
 // Helpers
 const roundTo2 = (num) => Math.round((Number(num || 0)) * 100) / 100;
@@ -106,6 +107,25 @@ const createInvoice = async (req, res) => {
 
     const invoice = new Invoice(invoiceData);
     await invoice.save();
+
+    // Create ledger credit entry for invoice creation
+    if (amount && amount > 0) {
+      try {
+        await LedgerService.createCreditEntry(
+          order.userId._id,
+          order._id,
+          amount,
+          `Invoice created - ${order.fuelQuantity}L fuel`,
+          {
+            paymentMethod: 'credit',
+            invoiceId: invoice._id
+          }
+        );
+      } catch (ledgerError) {
+        console.error('Ledger credit entry creation failed:', ledgerError);
+        // Don't fail the invoice creation if ledger fails
+      }
+    }
 
     const populatedInvoice = await Invoice.findById(invoice._id)
       .populate('orderId')

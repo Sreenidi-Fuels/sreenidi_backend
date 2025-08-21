@@ -6,9 +6,6 @@ const upload = require('../middleware/upload');
 // Create a new order
 router.post('/', orderController.createOrder);
 
-// Create a direct credit order
-router.post('/direct/credit', orderController.createDirectCreditOrder);
-
 // Create a direct cash order
 router.post('/direct/cash', orderController.createDirectCashOrder);
 
