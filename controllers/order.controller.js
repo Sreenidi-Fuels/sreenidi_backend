@@ -62,38 +62,18 @@ exports.createOrder = async (req, res) => {
         await order.save();
         await order.populate(populateOptions);
         
-        // ✅ FIX: Create DEBIT entry for online/credit orders
-        if (order.paymentType === 'online' || order.paymentType === 'credit') {
-            try {
-                console.log('=== Creating DEBIT Entry for Order ===');
-                console.log('Order ID:', order._id);
-                console.log('User ID:', order.userId);
-                console.log('Amount:', order.amount);
-                console.log('Payment Type:', order.paymentType);
-                console.log('Fuel Quantity:', order.fuelQuantity);
-
-                await LedgerService.createDebitEntry(
-                    order.userId, 
-                    order._id, 
-                    order.amount, 
-                    `Order created - ${order.fuelQuantity}L fuel`
-                );
-
-                console.log('✅ DEBIT entry created successfully for order');
-            } catch (ledgerError) {
-                console.error('❌ DEBIT entry creation failed:', ledgerError);
-                console.error('Error details:', {
-                    message: ledgerError.message,
-                    stack: ledgerError.stack,
-                    userId: order.userId,
-                    orderId: order._id,
-                    amount: order.amount
-                });
-                // Don't fail the order creation if ledger fails
-            }
-        } else {
-            console.log('No ledger entry needed for payment type:', order.paymentType);
-        }
+        // ✅ REMOVED: No ledger entry created on order creation
+        // Ledger entries are now created when:
+        // 1. Payment is received (CREDIT entry - totalPaid increases)
+        // 2. Fuel is delivered (DEBIT entry - totalOrders increases)
+        
+        console.log('=== Order Created Successfully ===');
+        console.log('Order ID:', order._id);
+        console.log('User ID:', order.userId);
+        console.log('Amount:', order.amount);
+        console.log('Fuel Quantity:', order.fuelQuantity);
+        console.log('Note: CREDIT entry will be created when payment is received');
+        console.log('Note: DEBIT entry will be created when fuel is delivered (invoice confirmed)');
         
         res.status(201).json(await orderWithPricing(order));
     } catch (err) {

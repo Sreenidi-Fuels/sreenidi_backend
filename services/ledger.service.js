@@ -5,13 +5,15 @@ const mongoose = require('mongoose');
 class LedgerService {
     
     /**
-     * Create a debit entry when order is created
+     * Create a CREDIT entry when payment is received (ADMIN PERSPECTIVE: Money coming IN)
      */
-    static async createDebitEntry(userId, orderId, amount, description = 'Order created') {
+    static async createPaymentEntry(userId, orderId, amount, description = 'Payment received', options = {}) {
         const session = await mongoose.startSession();
         session.startTransaction();
         
         try {
+            const { transactionId, bankRefNo, trackingId, paymentMethod = 'ccavenue' } = options;
+            
             // Convert string IDs to ObjectIds if needed
             const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
             const orderIdObj = typeof orderId === 'string' ? new mongoose.Types.ObjectId(orderId) : orderId;
@@ -22,8 +24,8 @@ class LedgerService {
                 userLedger = new UserLedger({ 
                     userId: userIdObj, 
                     currentBalance: 0,
-                    totalDebits: 0,
-                    totalCredits: 0,
+                    totalPaid: 0,           // ← CHANGED: totalPaid (money received)
+                    totalOrders: 0,         // ← CHANGED: totalOrders (fuel delivered)
                     outstandingAmount: 0
                 });
             }
@@ -31,25 +33,29 @@ class LedgerService {
             const balanceBefore = userLedger.currentBalance;
             const balanceAfter = balanceBefore + amount;
             
-            // Create ledger entry
+            // Create ledger entry - ADMIN PERSPECTIVE: Payment = CREDIT (money in)
             const ledgerEntry = new LedgerEntry({
                 userId: userIdObj,
                 orderId: orderIdObj,
-                type: 'debit',
+                type: 'credit',            // ← Payment = CREDIT (money in)
                 amount,
                 balanceBefore,
                 balanceAfter,
                 description,
-                paymentMethod: 'credit',
-                paymentStatus: 'pending'
+                paymentMethod,
+                paymentStatus: 'completed',
+                transactionId,
+                bankRefNo,
+                trackingId
             });
             
-            // Update user ledger
+            // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
-            userLedger.totalDebits += amount;
-            userLedger.outstandingAmount = userLedger.totalDebits - userLedger.totalCredits;  // ← Allow negative values
+            userLedger.totalPaid += amount;           // ← CHANGED: totalPaid increases
+            // Outstanding amount = total paid - total orders (positive = company owes users fuel)
+            userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
             userLedger.lastTransactionDate = new Date();
-            userLedger.lastOrderDate = new Date();
+            userLedger.lastPaymentDate = new Date();
             
             // Save both documents
             await Promise.all([
@@ -69,14 +75,14 @@ class LedgerService {
     }
     
     /**
-     * Create a credit entry when payment is received or invoice is created
+     * Create a DEBIT entry when fuel is delivered (ADMIN PERSPECTIVE: Fuel delivered OUT)
      */
-    static async createCreditEntry(userId, orderId, amount, description = 'Payment received', options = {}) {
+    static async createDeliveryEntry(userId, orderId, amount, description = 'Fuel delivered', options = {}) {
         const session = await mongoose.startSession();
         session.startTransaction();
         
         try {
-            const { invoiceId, paymentMethod = 'ccavenue', transactionId, bankRefNo, trackingId } = options;
+            const { invoiceId, paymentMethod = 'credit' } = options;
             
             // Convert string IDs to ObjectIds if needed
             const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
@@ -88,41 +94,36 @@ class LedgerService {
                 userLedger = new UserLedger({ 
                     userId: userIdObj, 
                     currentBalance: 0,
-                    totalDebits: 0,
-                    totalCredits: 0,
+                    totalPaid: 0,
+                    totalOrders: 0,
                     outstandingAmount: 0
                 });
             }
             
             const balanceBefore = userLedger.currentBalance;
-            // For credit entries (payments received), we don't change the current balance
-            // The outstanding amount will be reduced instead
-            const balanceAfter = balanceBefore;
+            // For delivery entries (fuel delivered), we reduce the current balance
+            const balanceAfter = balanceBefore - amount;
             
-            // Create ledger entry
+            // Create ledger entry - ADMIN PERSPECTIVE: Delivery = DEBIT (fuel out)
             const ledgerEntry = new LedgerEntry({
                 userId: userIdObj,
                 orderId: orderIdObj,
                 invoiceId,
-                type: 'credit',
+                type: 'debit',             // ← Delivery = DEBIT (fuel out)
                 amount,
                 balanceBefore,
                 balanceAfter,
                 description,
                 paymentMethod,
-                paymentStatus: 'completed',
-                transactionId,
-                bankRefNo,
-                trackingId
+                paymentStatus: 'completed'
             });
             
-            // Update user ledger
+            // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
-            userLedger.totalCredits += amount;
-            // Outstanding amount = total debits - total credits
-            userLedger.outstandingAmount = userLedger.totalDebits - userLedger.totalCredits;  // ← Allow negative values
+            userLedger.totalOrders += amount;       // ← CHANGED: totalOrders increases (fuel delivered)
+            // Outstanding amount = total paid - total orders (positive = company owes users fuel)
+            userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
             userLedger.lastTransactionDate = new Date();
-            userLedger.lastPaymentDate = new Date();
             
             // Save both documents
             await Promise.all([
@@ -154,8 +155,8 @@ class LedgerService {
             if (!userLedger) {
                 return {
                     currentBalance: 0,
-                    totalDebits: 0,
-                    totalCredits: 0,
+                    totalPaid: 0,           // ← CHANGED: totalPaid
+                    totalOrders: 0,         // ← CHANGED: totalOrders
                     outstandingAmount: 0,
                     status: 'active'
                 };
@@ -163,8 +164,8 @@ class LedgerService {
             
             return {
                 currentBalance: userLedger.currentBalance,
-                totalDebits: userLedger.totalDebits,
-                totalCredits: userLedger.totalCredits,
+                totalPaid: userLedger.totalPaid,           // ← CHANGED: totalPaid
+                totalOrders: userLedger.totalOrders,       // ← CHANGED: totalOrders
                 outstandingAmount: userLedger.outstandingAmount,
                 status: userLedger.status,
                 lastTransactionDate: userLedger.lastTransactionDate,
@@ -236,15 +237,15 @@ class LedgerService {
                         _id: null,
                         totalUsers: { $sum: 1 },
                         totalOutstanding: { $sum: '$outstandingAmount' },
-                        totalDebits: { $sum: '$totalDebits' },
-                        totalCredits: { $sum: '$totalCredits' },
+                        totalPaid: { $sum: '$totalPaid' },           // ← CHANGED: totalPaid
+                        totalOrders: { $sum: '$totalOrders' },       // ← CHANGED: totalOrders
                         averageOutstanding: { $avg: '$outstandingAmount' }
                     }
                 }
             ]);
             
             const overdueUsers = await UserLedger.countDocuments({ 
-                outstandingAmount: { $gt: 0 },
+                outstandingAmount: { $gt: 0 },  // ← Positive outstanding = company owes users fuel
                 lastPaymentDate: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 30 days
             });
             
@@ -253,8 +254,8 @@ class LedgerService {
                 overdueUsers,
                 totalUsers: summary[0]?.totalUsers || 0,
                 totalOutstanding: summary[0]?.totalOutstanding || 0,
-                totalDebits: summary[0]?.totalDebits || 0,
-                totalCredits: summary[0]?.totalCredits || 0,
+                totalPaid: summary[0]?.totalPaid || 0,           // ← CHANGED: totalPaid
+                totalOrders: summary[0]?.totalOrders || 0,       // ← CHANGED: totalOrders
                 averageOutstanding: summary[0]?.averageOutstanding || 0
             };
         } catch (error) {
@@ -272,39 +273,39 @@ class LedgerService {
             // Get all ledger entries for the user
             const entries = await LedgerEntry.find({ userId: userIdObj });
             
-            // Calculate totals
-            let totalDebits = 0;
-            let totalCredits = 0;
+            // Calculate totals - ADMIN PERSPECTIVE
+            let totalPaid = 0;        // ← CHANGED: totalPaid (payments received)
+            let totalOrders = 0;      // ← CHANGED: totalOrders (fuel delivered)
             
             entries.forEach(entry => {
-                if (entry.type === 'debit') {
-                    totalDebits += entry.amount;
-                } else if (entry.type === 'credit') {
-                    totalCredits += entry.amount;
+                if (entry.type === 'credit') {      // ← CHANGED: credit = payments received (money in)
+                    totalPaid += entry.amount;
+                } else if (entry.type === 'debit') { // ← CHANGED: debit = fuel delivered (fuel out)
+                    totalOrders += entry.amount;
                 }
             });
             
-            // Calculate outstanding amount
-            const outstandingAmount = totalDebits - totalCredits;
+            // Calculate outstanding amount - ADMIN PERSPECTIVE
+            const outstandingAmount = totalPaid - totalOrders;  // ← CHANGED: Paid - Orders
             
             // Update user ledger
             const userLedger = await UserLedger.findOne({ userId: userIdObj });
             if (userLedger) {
-                userLedger.totalDebits = totalDebits;
-                userLedger.totalCredits = totalCredits;
+                userLedger.totalPaid = totalPaid;           // ← CHANGED: totalPaid
+                userLedger.totalOrders = totalOrders;       // ← CHANGED: totalOrders
                 userLedger.outstandingAmount = outstandingAmount;
                 userLedger.lastTransactionDate = new Date();
                 await userLedger.save();
                 
                 console.log('✅ User ledger recalculated successfully:', {
                     userId: userIdObj,
-                    totalDebits,
-                    totalCredits,
+                    totalPaid,           // ← CHANGED: totalPaid
+                    totalOrders,         // ← CHANGED: totalOrders
                     outstandingAmount
                 });
             }
             
-            return { totalDebits, totalCredits, outstandingAmount };
+            return { totalPaid, totalOrders, outstandingAmount };
         } catch (error) {
             console.error('❌ Error recalculating user ledger:', error);
             throw error;

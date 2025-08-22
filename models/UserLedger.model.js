@@ -13,12 +13,12 @@ const UserLedgerSchema = new mongoose.Schema({
         default: 0, 
         min: 0 
     },
-    totalDebits: { 
+    totalPaid: { 
         type: Number, 
         default: 0, 
         min: 0 
     },
-    totalCredits: { 
+    totalOrders: { 
         type: Number, 
         default: 0, 
         min: 0 
