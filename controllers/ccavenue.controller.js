@@ -1,6 +1,7 @@
 const Order = require('../models/Order.model.js');
 const User = require('../models/User.model.js');
 const Address = require('../models/Address.model.js');
+const LedgerEntry = require('../models/LedgerEntry.model.js');  // Add LedgerEntry import
 const ccavenueUtils = require('../utils/ccavenue.js');
 const mongoose = require('mongoose');
 
@@ -271,6 +272,40 @@ exports.handlePaymentResponse = async (req, res) => {
                 console.log('Transaction ID:', responseData.transaction_id || responseData.tracking_id);
                 console.log('Bank Ref No:', responseData.bank_ref_no);
                 console.log('Note: CREDIT entry will be created when invoice is confirmed');
+                
+                // ✅ NEW: Update corresponding DEBIT ledger entry with CCAvenue transaction IDs
+                try {
+                    console.log('=== Updating DEBIT Ledger Entry with CCAvenue IDs ===');
+                    
+                    // Find the DEBIT entry for this order
+                    const debitEntry = await LedgerEntry.findOne({
+                        orderId: orderId,
+                        type: 'debit'
+                    });
+                    
+                    if (debitEntry) {
+                        // Update the DEBIT entry with CCAvenue transaction details
+                        debitEntry.transactionId = responseData.transaction_id || responseData.tracking_id;
+                        debitEntry.bankRefNo = responseData.bank_ref_no;
+                        debitEntry.trackingId = responseData.tracking_id;
+                        debitEntry.paymentStatus = 'completed';
+                        debitEntry.paymentMethod = 'ccavenue';
+                        
+                        await debitEntry.save();
+                        
+                        console.log('✅ DEBIT ledger entry updated with CCAvenue transaction IDs:', {
+                            ledgerEntryId: debitEntry._id,
+                            transactionId: debitEntry.transactionId,
+                            bankRefNo: debitEntry.bankRefNo,
+                            trackingId: debitEntry.trackingId
+                        });
+                    } else {
+                        console.log('⚠️ No DEBIT ledger entry found for order:', orderId);
+                    }
+                } catch (ledgerError) {
+                    console.error('❌ Error updating DEBIT ledger entry with CCAvenue IDs:', ledgerError);
+                    // Don't fail the payment if ledger update fails
+                }
                 
             } else {
                 updateData.$set['paymentDetails.failureReason'] = responseData.failure_message || responseData.status_message;

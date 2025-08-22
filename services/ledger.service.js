@@ -261,6 +261,55 @@ class LedgerService {
             throw error;
         }
     }
+
+    /**
+     * Recalculate user ledger totals and outstanding amount
+     */
+    static async recalculateUserLedger(userId) {
+        try {
+            const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+            
+            // Get all ledger entries for the user
+            const entries = await LedgerEntry.find({ userId: userIdObj });
+            
+            // Calculate totals
+            let totalDebits = 0;
+            let totalCredits = 0;
+            
+            entries.forEach(entry => {
+                if (entry.type === 'debit') {
+                    totalDebits += entry.amount;
+                } else if (entry.type === 'credit') {
+                    totalCredits += entry.amount;
+                }
+            });
+            
+            // Calculate outstanding amount
+            const outstandingAmount = totalDebits - totalCredits;
+            
+            // Update user ledger
+            const userLedger = await UserLedger.findOne({ userId: userIdObj });
+            if (userLedger) {
+                userLedger.totalDebits = totalDebits;
+                userLedger.totalCredits = totalCredits;
+                userLedger.outstandingAmount = outstandingAmount;
+                userLedger.lastTransactionDate = new Date();
+                await userLedger.save();
+                
+                console.log('✅ User ledger recalculated successfully:', {
+                    userId: userIdObj,
+                    totalDebits,
+                    totalCredits,
+                    outstandingAmount
+                });
+            }
+            
+            return { totalDebits, totalCredits, outstandingAmount };
+        } catch (error) {
+            console.error('❌ Error recalculating user ledger:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = LedgerService;

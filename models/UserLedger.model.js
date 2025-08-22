@@ -25,8 +25,7 @@ const UserLedgerSchema = new mongoose.Schema({
     },
     outstandingAmount: { 
         type: Number, 
-        default: 0, 
-        min: 0 
+        default: 0
     },
     lastTransactionDate: { 
         type: Date, 
