@@ -10,8 +10,8 @@ const UserLedgerSchema = new mongoose.Schema({
     currentBalance: { 
         type: Number, 
         required: true, 
-        default: 0, 
-        min: 0 
+        default: 0
+        // Removed min: 0 to allow negative balances (company owes users fuel)
     },
     totalPaid: { 
         type: Number, 

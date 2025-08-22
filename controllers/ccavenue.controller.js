@@ -276,6 +276,15 @@ exports.handlePaymentResponse = async (req, res) => {
                 // ✅ NEW: Create CREDIT entry when payment is received
                 try {
                     console.log('=== Creating CREDIT Entry for Payment Received ===');
+                    console.log('🔍 Payment Details:', {
+                        orderId,
+                        userId: order.userId,
+                        amount: order.amount,
+                        transactionId: responseData.transaction_id || responseData.tracking_id,
+                        bankRefNo: responseData.bank_ref_no,
+                        trackingId: responseData.tracking_id,
+                        timestamp: new Date().toISOString()
+                    });
                     
                     const LedgerService = require('../services/ledger.service.js');
                     
@@ -294,9 +303,39 @@ exports.handlePaymentResponse = async (req, res) => {
                     
                     console.log('✅ CREDIT entry created successfully for payment:', ledgerResult);
                     
+                    // ✅ CRITICAL: Store success in database for audit trail
+                    await Order.findByIdAndUpdate(orderId, {
+                        $set: {
+                            'paymentDetails.ledgerEntryCreated': true,
+                            'paymentDetails.ledgerEntryId': ledgerResult.ledgerEntry._id,
+                            'paymentDetails.ledgerCreatedAt': new Date()
+                        }
+                    });
+                    
                 } catch (ledgerError) {
-                    console.error('❌ Error creating CREDIT entry for payment:', ledgerError);
-                    // Don't fail the payment if ledger fails
+                    console.error('🚨 CRITICAL ERROR: Failed to create CREDIT entry for payment:', ledgerError);
+                    console.error('🚨 Payment Details for Manual Review:', {
+                        orderId,
+                        userId: order.userId,
+                        amount: order.amount,
+                        transactionId: responseData.transaction_id || responseData.tracking_id,
+                        bankRefNo: responseData.bank_ref_no,
+                        trackingId: responseData.tracking_id,
+                        error: ledgerError.message,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // ✅ CRITICAL: Store failure in database for manual review
+                    await Order.findByIdAndUpdate(orderId, {
+                        $set: {
+                            'paymentDetails.ledgerEntryCreated': false,
+                            'paymentDetails.ledgerError': ledgerError.message,
+                            'paymentDetails.ledgerErrorAt': new Date(),
+                            'paymentDetails.requiresManualReview': true
+                        }
+                    });
+                    
+                    // Don't fail the payment if ledger fails, but log for manual intervention
                 }
                 
             } else {

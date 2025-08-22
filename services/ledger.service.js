@@ -52,8 +52,8 @@ class LedgerService {
             // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
             userLedger.totalPaid += amount;           // ← CHANGED: totalPaid increases
-            // Outstanding amount = total paid - total orders (positive = company owes users fuel)
-            userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
+            // Outstanding amount = total orders - total paid (negative = company owes users fuel)
+            userLedger.outstandingAmount = userLedger.totalOrders - userLedger.totalPaid;
             userLedger.lastTransactionDate = new Date();
             userLedger.lastPaymentDate = new Date();
             
@@ -121,8 +121,8 @@ class LedgerService {
             // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
             userLedger.totalOrders += amount;       // ← CHANGED: totalOrders increases (fuel delivered)
-            // Outstanding amount = total paid - total orders (positive = company owes users fuel)
-            userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
+            // Outstanding amount = total orders - total paid (negative = company owes users fuel)
+            userLedger.outstandingAmount = userLedger.totalOrders - userLedger.totalPaid;
             userLedger.lastTransactionDate = new Date();
             
             // Save both documents
@@ -152,7 +152,15 @@ class LedgerService {
             
             let userLedger = await UserLedger.findOne({ userId: userIdObj });
             
+            console.log('🔍 getUserBalance - Raw UserLedger from DB:', {
+                userId: userIdObj,
+                totalPaid: userLedger?.totalPaid,
+                totalOrders: userLedger?.totalOrders,
+                outstandingAmount: userLedger?.outstandingAmount
+            });
+            
             if (!userLedger) {
+                console.log('⚠️ No UserLedger found, returning defaults');
                 return {
                     currentBalance: 0,
                     totalPaid: 0,           // ← CHANGED: totalPaid
@@ -162,7 +170,7 @@ class LedgerService {
                 };
             }
             
-            return {
+            const result = {
                 currentBalance: userLedger.currentBalance,
                 totalPaid: userLedger.totalPaid,           // ← CHANGED: totalPaid
                 totalOrders: userLedger.totalOrders,       // ← CHANGED: totalOrders
@@ -171,7 +179,11 @@ class LedgerService {
                 lastTransactionDate: userLedger.lastTransactionDate,
                 lastPaymentDate: userLedger.lastPaymentDate
             };
+            
+            console.log('📤 getUserBalance - Returning result:', result);
+            return result;
         } catch (error) {
+            console.error('❌ Error in getUserBalance:', error);
             throw error;
         }
     }
@@ -245,7 +257,7 @@ class LedgerService {
             ]);
             
             const overdueUsers = await UserLedger.countDocuments({ 
-                outstandingAmount: { $gt: 0 },  // ← Positive outstanding = company owes users fuel
+                outstandingAmount: { $lt: 0 },  // ← CHANGED: Negative outstanding = company owes users fuel
                 lastPaymentDate: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 30 days
             });
             
@@ -273,6 +285,11 @@ class LedgerService {
             // Get all ledger entries for the user
             const entries = await LedgerEntry.find({ userId: userIdObj });
             
+            console.log('🔍 Found ledger entries:', entries.length);
+            entries.forEach(entry => {
+                console.log(`  - ${entry.type}: ₹${entry.amount} (${entry.description})`);
+            });
+            
             // Calculate totals - ADMIN PERSPECTIVE
             let totalPaid = 0;        // ← CHANGED: totalPaid (payments received)
             let totalOrders = 0;      // ← CHANGED: totalOrders (fuel delivered)
@@ -285,17 +302,34 @@ class LedgerService {
                 }
             });
             
-            // Calculate outstanding amount - ADMIN PERSPECTIVE
-            const outstandingAmount = totalPaid - totalOrders;  // ← CHANGED: Paid - Orders
+            console.log('🧮 Calculated totals:', { totalPaid, totalOrders });
             
-            // Update user ledger
-            const userLedger = await UserLedger.findOne({ userId: userIdObj });
-            if (userLedger) {
-                userLedger.totalPaid = totalPaid;           // ← CHANGED: totalPaid
-                userLedger.totalOrders = totalOrders;       // ← CHANGED: totalOrders
-                userLedger.outstandingAmount = outstandingAmount;
-                userLedger.lastTransactionDate = new Date();
-                await userLedger.save();
+            // Calculate outstanding amount - ADMIN PERSPECTIVE
+            const outstandingAmount = totalOrders - totalPaid;  // ← CHANGED: Orders - Paid
+            
+            console.log('💰 Outstanding amount calculation:', `${totalOrders} - ${totalPaid} = ${outstandingAmount}`);
+            
+            // Update user ledger using findOneAndUpdate for atomic operation
+            console.log('💾 Updating UserLedger in database...');
+            const updatedLedger = await UserLedger.findOneAndUpdate(
+                { userId: userIdObj },
+                {
+                    $set: {
+                        totalPaid: totalPaid,           // ← CHANGED: totalPaid
+                        totalOrders: totalOrders,       // ← CHANGED: totalOrders
+                        outstandingAmount: outstandingAmount,
+                        lastTransactionDate: new Date()
+                    }
+                },
+                { new: true, runValidators: true }  // Return updated document
+            );
+            
+            if (updatedLedger) {
+                console.log('📊 After database update - UserLedger:', {
+                    totalPaid: updatedLedger.totalPaid,
+                    totalOrders: updatedLedger.totalOrders,
+                    outstandingAmount: updatedLedger.outstandingAmount
+                });
                 
                 console.log('✅ User ledger recalculated successfully:', {
                     userId: userIdObj,
@@ -303,11 +337,124 @@ class LedgerService {
                     totalOrders,         // ← CHANGED: totalOrders
                     outstandingAmount
                 });
+            } else {
+                console.log('⚠️ No UserLedger found to update');
             }
             
             return { totalPaid, totalOrders, outstandingAmount };
         } catch (error) {
             console.error('❌ Error recalculating user ledger:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * 🔧 PRODUCTION-GRADE: Auto-recover missing ledger entries
+     * This method automatically finds and creates missing CREDIT entries for completed payments
+     */
+    static async autoRecoverMissingEntries(userId) {
+        try {
+            const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+            
+            console.log('🔧 Auto-recovering missing ledger entries for user:', userId);
+            
+            // Find orders with completed payments but missing ledger entries
+            const Order = require('../models/Order.model.js');
+            const ordersWithMissingEntries = await Order.find({
+                userId: userIdObj,
+                'paymentDetails.status': 'completed',
+                $or: [
+                    { 'paymentDetails.ledgerEntryCreated': { $ne: true } },
+                    { 'paymentDetails.ledgerEntryCreated': { $exists: false } }
+                ]
+            });
+            
+            console.log('🔍 Found orders with missing ledger entries:', ordersWithMissingEntries.length);
+            
+            let recoveredCount = 0;
+            let errors = [];
+            
+            for (const order of ordersWithMissingEntries) {
+                try {
+                    console.log('🔄 Recovering ledger entry for order:', order._id, 'Amount:', order.amount);
+                    
+                    // Check if ledger entry already exists
+                    const existingEntry = await LedgerEntry.findOne({
+                        userId: userIdObj,
+                        orderId: order._id,
+                        type: 'credit'
+                    });
+                    
+                    if (existingEntry) {
+                        console.log('✅ Ledger entry already exists for order:', order._id);
+                        // Mark as created in order
+                        await Order.findByIdAndUpdate(order._id, {
+                            $set: {
+                                'paymentDetails.ledgerEntryCreated': true,
+                                'paymentDetails.ledgerEntryId': existingEntry._id,
+                                'paymentDetails.ledgerCreatedAt': existingEntry.createdAt
+                            }
+                        });
+                        continue;
+                    }
+                    
+                    // Create missing CREDIT entry
+                    const ledgerResult = await this.createPaymentEntry(
+                        userIdObj,
+                        order._id,
+                        order.amount,
+                        `Payment received via ${order.paymentDetails?.method || 'online'} - ${order.fuelQuantity}L fuel (Auto-recovered)`,
+                        {
+                            paymentMethod: order.paymentDetails?.method || 'online',
+                            transactionId: order.paymentDetails?.transactionId,
+                            bankRefNo: order.paymentDetails?.bankRefNo,
+                            trackingId: order.paymentDetails?.trackingId
+                        }
+                    );
+                    
+                    // Mark as created in order
+                    await Order.findByIdAndUpdate(order._id, {
+                        $set: {
+                            'paymentDetails.ledgerEntryCreated': true,
+                            'paymentDetails.ledgerEntryId': ledgerResult.ledgerEntry._id,
+                            'paymentDetails.ledgerCreatedAt': new Date(),
+                            'paymentDetails.requiresManualReview': false
+                        }
+                    });
+                    
+                    console.log('✅ Successfully recovered ledger entry for order:', order._id);
+                    recoveredCount++;
+                    
+                } catch (orderError) {
+                    console.error('❌ Failed to recover ledger entry for order:', order._id, orderError.message);
+                    errors.push({ orderId: order._id, error: orderError.message });
+                    
+                    // Mark for manual review
+                    await Order.findByIdAndUpdate(order._id, {
+                        $set: {
+                            'paymentDetails.requiresManualReview': true,
+                            'paymentDetails.ledgerError': orderError.message,
+                            'paymentDetails.ledgerErrorAt': new Date()
+                        }
+                    });
+                }
+            }
+            
+            // Recalculate ledger after recovery
+            if (recoveredCount > 0) {
+                console.log('🔄 Recalculating ledger after recovery...');
+                await this.recalculateUserLedger(userId);
+            }
+            
+            return {
+                success: true,
+                recoveredCount,
+                totalOrders: ordersWithMissingEntries.length,
+                errors
+            };
+            
+        } catch (error) {
+            console.error('❌ Error in auto-recovery:', error);
             throw error;
         }
     }

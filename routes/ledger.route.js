@@ -37,5 +37,26 @@ router.get('/admin/summary', ledgerController.getAdminSummary);
  */
 router.get('/admin/users', ledgerController.getAllUsersLedger);
 
+/**
+ * @route   POST /api/ledger/users/:userId/recalculate
+ * @desc    Recalculate user ledger totals and outstanding amount
+ * @access  Private
+ */
+router.post('/users/:userId/recalculate', ledgerController.recalculateUserLedger);
+
+/**
+ * @route   POST /api/ledger/users/:userId/create-credit
+ * @desc    Manually create missing CREDIT entry for completed payment
+ * @access  Private
+ */
+router.post('/users/:userId/create-credit', ledgerController.createMissingCredit);
+
+/**
+ * @route   POST /api/ledger/users/:userId/auto-recover
+ * @desc    🔧 PRODUCTION-GRADE: Auto-recover missing ledger entries
+ * @access  Private
+ */
+router.post('/users/:userId/auto-recover', ledgerController.autoRecoverMissingEntries);
+
 module.exports = router;
 

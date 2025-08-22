@@ -313,7 +313,11 @@ const updateInvoice = async (req, res) => {
     console.log('Invoice already confirmed:', invoice.status === 'confirmed');
     
     // Check if we need to create/update debit entry
+    // If status is being set to confirmed OR if invoice is already confirmed
     const shouldHandleDeliveryEntry = (status === 'confirmed') || (invoice.status === 'confirmed');
+    
+    console.log('Should handle delivery entry:', shouldHandleDeliveryEntry);
+    console.log('Reason:', status === 'confirmed' ? 'Status being set to confirmed' : 'Invoice already confirmed');
     
     if (shouldHandleDeliveryEntry) {
       // Use totalAmount if available, otherwise fallback to amount
@@ -358,6 +362,16 @@ const updateInvoice = async (req, res) => {
             }
           } else {
             console.log('🆕 Creating new DEBIT entry for fuel delivery');
+            console.log('Calling LedgerService.createDeliveryEntry with:', {
+              userId: invoice.userId._id,
+              orderId: invoice.orderId._id,
+              amount: deliveryAmount,
+              description: `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount})`,
+              options: {
+                paymentMethod: 'credit',
+                invoiceId: invoice._id
+              }
+            });
             
             const ledgerResult = await LedgerService.createDeliveryEntry(
               invoice.userId._id,
@@ -374,7 +388,7 @@ const updateInvoice = async (req, res) => {
           }
 
         } catch (ledgerError) {
-          console.error('❌ CREDIT entry creation failed for invoice confirmation:', ledgerError);
+          console.error('❌ DEBIT entry creation failed for fuel delivery:', ledgerError);
           console.error('Error details:', {
             message: ledgerError.message,
             stack: ledgerError.stack,
@@ -383,7 +397,7 @@ const updateInvoice = async (req, res) => {
             userId: invoice.userId._id,
             amount: invoice.amount,
             totalAmount: invoice.totalAmount,
-            creditAmount: creditAmount
+            deliveryAmount: deliveryAmount
           });
           // Don't fail the invoice update if ledger fails
         }
@@ -392,7 +406,7 @@ const updateInvoice = async (req, res) => {
         console.log('Amount details:', {
           amount: invoice.amount,
           totalAmount: invoice.totalAmount,
-          creditAmount: creditAmount
+          deliveryAmount: deliveryAmount
         });
       }
     }

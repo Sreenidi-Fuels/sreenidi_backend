@@ -169,12 +169,137 @@ const getAllUsersLedger = async (req, res) => {
     }
 };
 
+/**
+ * @desc    Recalculate user ledger totals and outstanding amount
+ * @route   POST /api/ledger/users/:userId/recalculate
+ * @access  Private
+ */
+const recalculateUserLedger = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                error: 'User ID is required'
+            });
+        }
+        
+        console.log('🔄 Recalculating user ledger for:', userId);
+        const result = await LedgerService.recalculateUserLedger(userId);
+        
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'User ledger recalculated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error recalculating user ledger:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to recalculate user ledger',
+            details: error.message
+        });
+    }
+};
+
+/**
+ * @desc    Manually create missing CREDIT entry for completed payment
+ * @route   POST /api/ledger/users/:userId/create-credit
+ * @access  Private
+ */
+const createMissingCredit = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { orderId, amount, description, transactionId, bankRefNo, trackingId } = req.body;
+        
+        if (!userId || !orderId || !amount) {
+            return res.status(400).json({
+                success: false,
+                error: 'User ID, Order ID, and Amount are required'
+            });
+        }
+        
+        console.log('🔧 Creating missing CREDIT entry for:', { userId, orderId, amount });
+        
+        const result = await LedgerService.createPaymentEntry(
+            userId,
+            orderId,
+            amount,
+            description || 'Payment received (Manual Fix)',
+            {
+                paymentMethod: 'ccavenue',
+                transactionId,
+                bankRefNo,
+                trackingId
+            }
+        );
+        
+        // Recalculate ledger after creating entry
+        await LedgerService.recalculateUserLedger(userId);
+        
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Missing CREDIT entry created successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error creating missing credit entry:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create missing credit entry',
+            details: error.message
+        });
+    }
+};
+
+/**
+ * @desc    🔧 PRODUCTION-GRADE: Auto-recover missing ledger entries
+ * @route   POST /api/ledger/users/:userId/auto-recover
+ * @access  Private
+ */
+const autoRecoverMissingEntries = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                error: 'User ID is required'
+            });
+        }
+        
+        console.log('🔧 Auto-recovering missing ledger entries for user:', userId);
+        
+        const result = await LedgerService.autoRecoverMissingEntries(userId);
+        
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: `Auto-recovery completed. Recovered ${result.recoveredCount} entries.`
+        });
+        
+    } catch (error) {
+        console.error('Error in auto-recovery:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to auto-recover missing entries',
+            details: error.message
+        });
+    }
+};
+
 // Export all controller functions
 module.exports = {
     getUserBalance,
     getUserTransactions,
     getUserOutstanding,
     getAdminSummary,
-    getAllUsersLedger
+    getAllUsersLedger,
+    recalculateUserLedger,
+    createMissingCredit,
+    autoRecoverMissingEntries
 };
 
