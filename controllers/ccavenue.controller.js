@@ -288,6 +288,22 @@ exports.handlePaymentResponse = async (req, res) => {
                     
                     const LedgerService = require('../services/ledger.service.js');
                     
+                    // 🚨 CRITICAL: Check if CREDIT entry already exists to prevent duplicates
+                    const existingCreditEntry = await LedgerEntry.findOne({
+                        orderId: orderId,
+                        type: 'credit'
+                    });
+                    
+                    if (existingCreditEntry) {
+                        console.log('🚨 DUPLICATE CREDIT ENTRY DETECTED for order:', orderId);
+                        console.log('Existing entry:', { id: existingCreditEntry._id, amount: existingCreditEntry.amount });
+                        
+                        // 🚨 EMERGENCY: Delete duplicate and create correct one
+                        console.log('🗑️ Deleting duplicate CREDIT entry...');
+                        await LedgerEntry.deleteOne({ _id: existingCreditEntry._id });
+                        console.log('✅ Duplicate entry deleted');
+                    }
+                    
                     const ledgerResult = await LedgerService.createPaymentEntry(
                         order.userId,
                         orderId,

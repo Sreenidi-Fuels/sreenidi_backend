@@ -127,6 +127,10 @@ const OrderSchema = new mongoose.Schema(
     deliveredLiters: {
       type: Number
     },
+    CustomersCash: {
+      type: Number,
+      default: null
+    },
     receiverDetails: {
       type: {
         type: String,

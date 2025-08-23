@@ -112,13 +112,18 @@ const createInvoice = async (req, res) => {
     // Create ledger credit entry for invoice creation
     if (amount && amount > 0) {
       try {
+        // Use the actual payment method from the order
+        const actualPaymentMethod = order.paymentType || 'credit';
+        console.log('📋 Invoice creation - Order payment type:', actualPaymentMethod);
+        console.log('💰 Using payment method for ledger entry:', actualPaymentMethod);
+        
         await LedgerService.createCreditEntry(
           order.userId._id,
           order._id,
           amount,
           `Invoice created - ${order.fuelQuantity}L fuel`,
           {
-            paymentMethod: 'credit',
+            paymentMethod: actualPaymentMethod,
             invoiceId: invoice._id
           }
         );
@@ -313,101 +318,94 @@ const updateInvoice = async (req, res) => {
     console.log('Invoice already confirmed:', invoice.status === 'confirmed');
     
     // Check if we need to create/update debit entry
-    // If status is being set to confirmed OR if invoice is already confirmed
-    const shouldHandleDeliveryEntry = (status === 'confirmed') || (invoice.status === 'confirmed');
+    // If status is being set to confirmed/finalised OR if invoice is already confirmed/finalised
+    const shouldHandleDeliveryEntry = (status === 'confirmed' || status === 'finalised') || (invoice.status === 'confirmed' || invoice.status === 'finalised');
     
     console.log('Should handle delivery entry:', shouldHandleDeliveryEntry);
-    console.log('Reason:', status === 'confirmed' ? 'Status being set to confirmed' : 'Invoice already confirmed');
+    console.log('Reason:', status === 'confirmed' ? 'Status being set to confirmed' : 
+                           status === 'finalised' ? 'Status being set to finalised' : 
+                           'Invoice already confirmed/finalised');
     
     if (shouldHandleDeliveryEntry) {
-      // Use totalAmount if available, otherwise fallback to amount
+      // 🚨 CRITICAL FIX: Validate invoice amounts before creating ledger entries
       const deliveryAmount = invoice.totalAmount || invoice.amount;
       
-      if (deliveryAmount && deliveryAmount > 0) {
-        try {
-          console.log('=== Creating/Updating DEBIT Entry for Fuel Delivery ===');
-          console.log('Invoice ID:', invoice._id);
-          console.log('Order ID:', invoice.orderId._id);
-          console.log('User ID:', invoice.userId._id);
-          console.log('Base Amount:', invoice.amount);
-          console.log('Total Amount:', invoice.totalAmount);
-          console.log('Delivery Amount:', deliveryAmount);
-          console.log('Status:', status);
-          console.log('Invoice Status:', invoice.status);
+      // Validate that invoice amount makes sense
+      if (!deliveryAmount || deliveryAmount <= 0) {
+        console.log('⚠️ Invalid delivery amount:', deliveryAmount);
+        return;
+      }
+      
+      // 🚨 CRITICAL: Check for existing DEBIT entries to prevent duplicates
+      const existingDebitEntries = await LedgerEntry.find({
+        invoiceId: invoice._id,
+        type: 'debit'
+      });
+      
+      if (existingDebitEntries.length > 0) {
+        console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for invoice:', invoice._id);
+        console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
+        
+        // 🚨 EMERGENCY: Delete all duplicate entries and create one correct one
+        console.log('🗑️ Deleting duplicate DEBIT entries...');
+        await LedgerEntry.deleteMany({
+          invoiceId: invoice._id,
+          type: 'debit'
+        });
+        console.log('✅ Duplicate entries deleted');
+      }
+      
+      try {
+        console.log('=== Creating/Updating DEBIT Entry for Fuel Delivery ===');
+        console.log('Invoice ID:', invoice._id);
+        console.log('Order ID:', invoice.orderId._id);
+        console.log('User ID:', invoice.userId._id);
+        console.log('Base Amount:', invoice.amount);
+        console.log('Total Amount:', invoice.totalAmount);
+        console.log('Delivery Amount:', deliveryAmount);
+        console.log('Status:', status);
+        console.log('Invoice Status:', invoice.status);
 
-          // Check if DEBIT entry already exists for this invoice
-          const existingDebitEntry = await LedgerEntry.findOne({
-            invoiceId: invoice._id,
-            type: 'debit'
-          });
-
-          if (existingDebitEntry) {
-            console.log('✅ DEBIT entry already exists, updating amount if needed');
-            
-            // Update existing debit entry if amount changed
-            if (existingDebitEntry.amount !== deliveryAmount) {
-              console.log('🔄 Updating existing debit entry amount from', existingDebitEntry.amount, 'to', deliveryAmount);
-              
-              // Update the existing debit entry
-              existingDebitEntry.amount = deliveryAmount;
-              existingDebitEntry.description = `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount})`;
-              await existingDebitEntry.save();
-              
-              // Recalculate user ledger
-              await LedgerService.recalculateUserLedger(invoice.userId._id);
-              
-              console.log('✅ DEBIT entry updated successfully');
-            } else {
-              console.log('✅ DEBIT entry amount unchanged, no update needed');
-            }
-          } else {
-            console.log('🆕 Creating new DEBIT entry for fuel delivery');
-            console.log('Calling LedgerService.createDeliveryEntry with:', {
-              userId: invoice.userId._id,
-              orderId: invoice.orderId._id,
-              amount: deliveryAmount,
-              description: `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount})`,
-              options: {
-                paymentMethod: 'credit',
-                invoiceId: invoice._id
-              }
-            });
-            
-            const ledgerResult = await LedgerService.createDeliveryEntry(
-              invoice.userId._id,
-              invoice.orderId._id,
-              deliveryAmount,  // ← Use totalAmount or amount
-              `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount})`,
-              {
-                paymentMethod: 'credit',
-                invoiceId: invoice._id
-              }
-            );
-
-            console.log('✅ DEBIT entry created successfully for fuel delivery:', ledgerResult);
+        // 🆕 Create new DEBIT entry (after cleaning duplicates)
+        console.log('🆕 Creating new DEBIT entry for fuel delivery');
+        
+        // Get the actual payment method from the order
+        const Order = require('../models/Order.model.js');
+        const order = await Order.findById(invoice.orderId._id);
+        const actualPaymentMethod = order ? order.paymentType : 'credit';
+        
+        console.log('📋 Order payment type:', actualPaymentMethod);
+        console.log('💰 Using payment method for ledger entry:', actualPaymentMethod);
+        
+        const ledgerResult = await LedgerService.createDeliveryEntry(
+          invoice.userId._id,
+          invoice.orderId._id,
+          deliveryAmount,
+          `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
+          {
+            paymentMethod: actualPaymentMethod,
+            invoiceId: invoice._id
           }
+        );
 
-        } catch (ledgerError) {
-          console.error('❌ DEBIT entry creation failed for fuel delivery:', ledgerError);
-          console.error('Error details:', {
-            message: ledgerError.message,
-            stack: ledgerError.stack,
-            invoiceId: invoice._id,
-            orderId: invoice.orderId._id,
-            userId: invoice.userId._id,
-            amount: invoice.amount,
-            totalAmount: invoice.totalAmount,
-            deliveryAmount: deliveryAmount
-          });
-          // Don't fail the invoice update if ledger fails
-        }
-      } else {
-        console.log('⚠️ Invoice status changed to confirmed but no amount available for ledger entry');
-        console.log('Amount details:', {
+        console.log('✅ DEBIT entry created successfully for fuel delivery:', ledgerResult);
+        
+        // Recalculate user ledger after creating entry
+        await LedgerService.recalculateUserLedger(invoice.userId._id);
+        
+      } catch (ledgerError) {
+        console.error('❌ DEBIT entry creation failed for fuel delivery:', ledgerError);
+        console.error('Error details:', {
+          message: ledgerError.message,
+          stack: ledgerError.stack,
+          invoiceId: invoice._id,
+          orderId: invoice.orderId._id,
+          userId: invoice.userId._id,
           amount: invoice.amount,
           totalAmount: invoice.totalAmount,
           deliveryAmount: deliveryAmount
         });
+        // Don't fail the invoice update if ledger fails
       }
     }
 

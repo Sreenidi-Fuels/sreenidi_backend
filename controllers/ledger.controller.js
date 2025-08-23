@@ -291,6 +291,55 @@ const autoRecoverMissingEntries = async (req, res) => {
     }
 };
 
+/**
+ * @desc    🔧 DEBUG: Manually create DEBIT entry for fuel delivery
+ * @route   POST /api/ledger/users/:userId/create-debit
+ * @access  Private
+ */
+const createMissingDebit = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { orderId, invoiceId, amount, description } = req.body;
+        
+        if (!userId || !orderId || !amount) {
+            return res.status(400).json({
+                success: false,
+                error: 'User ID, Order ID, and Amount are required'
+            });
+        }
+        
+        console.log('🔧 Creating missing DEBIT entry for fuel delivery:', { userId, orderId, amount });
+        
+        const result = await LedgerService.createDeliveryEntry(
+            userId,
+            orderId,
+            amount,
+            description || 'Fuel delivered (Manual Fix)',
+            {
+                paymentMethod: 'credit',
+                invoiceId
+            }
+        );
+        
+        // Recalculate ledger after creating entry
+        await LedgerService.recalculateUserLedger(userId);
+        
+        res.status(200).json({
+            success: true,
+            data: result,
+            message: 'Missing DEBIT entry created successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error creating missing debit entry:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create missing debit entry',
+            details: error.message
+        });
+    }
+};
+
 // Export all controller functions
 module.exports = {
     getUserBalance,
@@ -300,6 +349,7 @@ module.exports = {
     getAllUsersLedger,
     recalculateUserLedger,
     createMissingCredit,
-    autoRecoverMissingEntries
+    autoRecoverMissingEntries,
+    createMissingDebit
 };
 

@@ -51,6 +51,10 @@ const LedgerEntrySchema = new mongoose.Schema({
     transactionId: String,
     bankRefNo: String,
     trackingId: String,
+    deliveredLiters: { 
+        type: Number, 
+        default: null 
+    },
     metadata: { 
         type: mongoose.Schema.Types.Mixed, 
         select: false 

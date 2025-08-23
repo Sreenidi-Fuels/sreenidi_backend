@@ -18,6 +18,18 @@ class LedgerService {
             const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
             const orderIdObj = typeof orderId === 'string' ? new mongoose.Types.ObjectId(orderId) : orderId;
             
+            // Fetch order to get deliveredLiters and CustomersCash
+            const Order = require('../models/Order.model.js');
+            const order = await Order.findById(orderIdObj).session(session);
+            const deliveredLiters = order ? order.deliveredLiters : null;
+            
+            // For cash payments, use CustomersCash amount instead of the passed amount
+            let paymentAmount = amount;
+            if (paymentMethod === 'cash' && order && order.CustomersCash !== null && order.CustomersCash !== undefined) {
+                paymentAmount = order.CustomersCash;
+                console.log(`💰 Cash payment detected: Using CustomersCash (₹${paymentAmount}) instead of passed amount (₹${amount})`);
+            }
+            
             // Get or create user ledger
             let userLedger = await UserLedger.findOne({ userId: userIdObj }).session(session);
             if (!userLedger) {
@@ -31,14 +43,14 @@ class LedgerService {
             }
             
             const balanceBefore = userLedger.currentBalance;
-            const balanceAfter = balanceBefore + amount;
+            const balanceAfter = balanceBefore + paymentAmount;
             
             // Create ledger entry - ADMIN PERSPECTIVE: Payment = CREDIT (money in)
             const ledgerEntry = new LedgerEntry({
                 userId: userIdObj,
                 orderId: orderIdObj,
                 type: 'credit',            // ← Payment = CREDIT (money in)
-                amount,
+                amount: paymentAmount,     // ← Use adjusted amount for cash payments
                 balanceBefore,
                 balanceAfter,
                 description,
@@ -46,12 +58,13 @@ class LedgerService {
                 paymentStatus: 'completed',
                 transactionId,
                 bankRefNo,
-                trackingId
+                trackingId,
+                deliveredLiters
             });
             
             // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
-            userLedger.totalPaid += amount;           // ← CHANGED: totalPaid increases
+            userLedger.totalPaid += paymentAmount;           // ← CHANGED: totalPaid increases
             // Outstanding amount = total orders - total paid (negative = company owes users fuel)
             userLedger.outstandingAmount = userLedger.totalOrders - userLedger.totalPaid;
             userLedger.lastTransactionDate = new Date();
@@ -88,6 +101,18 @@ class LedgerService {
             const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
             const orderIdObj = typeof orderId === 'string' ? new mongoose.Types.ObjectId(orderId) : orderId;
             
+            // Fetch order to get deliveredLiters and total amount
+            const Order = require('../models/Order.model.js');
+            const order = await Order.findById(orderIdObj).session(session);
+            const deliveredLiters = order ? order.deliveredLiters : null;
+            
+            // For cash payments, use the order's total amount instead of the passed amount
+            let deliveryAmount = amount;
+            if (paymentMethod === 'cash' && order && order.amount !== null && order.amount !== undefined) {
+                deliveryAmount = order.amount;
+                console.log(`🚛 Cash delivery detected: Using order total amount (₹${deliveryAmount}) instead of passed amount (₹${amount})`);
+            }
+            
             // Get or create user ledger
             let userLedger = await UserLedger.findOne({ userId: userIdObj }).session(session);
             if (!userLedger) {
@@ -102,7 +127,7 @@ class LedgerService {
             
             const balanceBefore = userLedger.currentBalance;
             // For delivery entries (fuel delivered), we reduce the current balance
-            const balanceAfter = balanceBefore - amount;
+            const balanceAfter = balanceBefore - deliveryAmount;
             
             // Create ledger entry - ADMIN PERSPECTIVE: Delivery = DEBIT (fuel out)
             const ledgerEntry = new LedgerEntry({
@@ -110,17 +135,18 @@ class LedgerService {
                 orderId: orderIdObj,
                 invoiceId,
                 type: 'debit',             // ← Delivery = DEBIT (fuel out)
-                amount,
+                amount: deliveryAmount,    // ← Use adjusted amount for cash payments
                 balanceBefore,
                 balanceAfter,
                 description,
                 paymentMethod,
-                paymentStatus: 'completed'
+                paymentStatus: 'completed',
+                deliveredLiters
             });
             
             // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
-            userLedger.totalOrders += amount;       // ← CHANGED: totalOrders increases (fuel delivered)
+            userLedger.totalOrders += deliveryAmount;       // ← CHANGED: totalOrders increases (fuel delivered)
             // Outstanding amount = total orders - total paid (negative = company owes users fuel)
             userLedger.outstandingAmount = userLedger.totalOrders - userLedger.totalPaid;
             userLedger.lastTransactionDate = new Date();
@@ -140,6 +166,22 @@ class LedgerService {
         } finally {
             session.endSession();
         }
+    }
+    
+    /**
+     * Create a CREDIT entry when payment is received (ADMIN PERSPECTIVE: Money coming IN)
+     * Alias for createPaymentEntry for backward compatibility
+     */
+    static async createCreditEntry(userId, orderId, amount, description = 'Payment received', options = {}) {
+        return this.createPaymentEntry(userId, orderId, amount, description, options);
+    }
+    
+    /**
+     * Create a DEBIT entry when fuel is delivered (ADMIN PERSPECTIVE: Fuel delivered OUT)
+     * Alias for createDeliveryEntry for backward compatibility
+     */
+    static async createDebitEntry(userId, orderId, amount, description = 'Fuel delivered', options = {}) {
+        return this.createDeliveryEntry(userId, orderId, amount, description, options);
     }
     
     /**
@@ -202,7 +244,7 @@ class LedgerService {
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
-                .populate('orderId', 'fuelQuantity amount')
+                .populate('orderId', 'fuelQuantity amount deliveredLiters')
                 .populate('invoiceId', 'invoiceNo totalAmount')
                 .lean();
             

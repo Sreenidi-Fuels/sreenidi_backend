@@ -58,5 +58,12 @@ router.post('/users/:userId/create-credit', ledgerController.createMissingCredit
  */
 router.post('/users/:userId/auto-recover', ledgerController.autoRecoverMissingEntries);
 
+/**
+ * @route   POST /api/ledger/users/:userId/create-debit
+ * @desc    🔧 DEBUG: Manually create DEBIT entry for fuel delivery
+ * @access  Private
+ */
+router.post('/users/:userId/create-debit', ledgerController.createMissingDebit);
+
 module.exports = router;
 

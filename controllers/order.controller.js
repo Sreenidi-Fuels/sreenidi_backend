@@ -522,15 +522,16 @@ exports.getAllCompletedOrders = async (req, res) => {
     }
 };
 
-// Driver updates delivery details (jcno, deliveredLiters, deliveryImage as file)
+// Driver updates delivery details (jcno, deliveredLiters, CustomersCash, deliveryImage as file)
 exports.updateDriverDeliveryDetails = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
         if (!order) return res.status(404).json({ error: 'Order not found' });
 
-        const { jcno, deliveredLiters } = req.body;
+        const { jcno, deliveredLiters, CustomersCash } = req.body;
         if (jcno !== undefined) order.jcno = jcno;
         if (deliveredLiters !== undefined) order.deliveredLiters = deliveredLiters;
+        if (CustomersCash !== undefined) order.CustomersCash = CustomersCash;
         if (req.file) {
             order.deliveryImage = {
                 data: req.file.buffer,
@@ -539,6 +540,43 @@ exports.updateDriverDeliveryDetails = async (req, res) => {
         }
 
         await order.save();
+
+        // ✅ Create CREDIT entry for cash payment when CustomersCash is provided
+        if (CustomersCash !== undefined && CustomersCash > 0 && order.paymentType === 'cash') {
+            try {
+                console.log('💰 Creating CREDIT entry for cash payment received');
+                console.log('Order ID:', order._id);
+                console.log('User ID:', order.userId);
+                console.log('CustomersCash:', CustomersCash);
+                console.log('Payment Type:', order.paymentType);
+                
+                await LedgerService.createPaymentEntry(
+                    order.userId,
+                    order._id,
+                    CustomersCash,
+                    `Cash payment received - ${order.fuelQuantity}L fuel delivered`,
+                    {
+                        paymentMethod: 'cash',
+                        transactionId: `CASH_${order._id}_${Date.now()}`,
+                        bankRefNo: `CASH_${order._id}`,
+                        trackingId: `CASH_${order._id}`
+                    }
+                );
+                
+                console.log('✅ CREDIT entry created successfully for cash payment');
+            } catch (ledgerError) {
+                console.error('❌ CREDIT entry creation failed for cash payment:', ledgerError);
+                console.error('Error details:', {
+                    message: ledgerError.message,
+                    stack: ledgerError.stack,
+                    userId: order.userId,
+                    orderId: order._id,
+                    CustomersCash: CustomersCash
+                });
+                // Don't fail the delivery update if ledger fails
+            }
+        }
+
         await order.populate([
             { path: 'shippingAddress' },
             { path: 'billingAddress' },
