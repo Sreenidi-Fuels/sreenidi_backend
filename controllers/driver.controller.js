@@ -130,12 +130,38 @@ exports.getDriverById = async (req, res) => {
     }
 };
 
+
 // Update a driver by ID
 exports.updateDriver = async (req, res) => {
     try {
         const driver = await Driver.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }).populate('vehicleDetails');
         if (!driver) return res.status(404).json({ error: 'Driver not found' });
         res.json(driver);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+// Admin: Set driver role (normal/credited) and credit rate
+exports.setDriverRoleAndCredit = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role, creditFuelRate } = req.body;
+        if (!role || !['normal', 'credited'].includes(role)) {
+            return res.status(400).json({ error: 'Role must be either normal or credited' });
+        }
+        const update = { role };
+        if (role === 'credited') {
+            if (typeof creditFuelRate === 'number') update.creditFuelRate = creditFuelRate;
+        } else {
+            update.creditFuelRate = 0;
+        }
+        const driver = await Driver.findByIdAndUpdate(id, update, { new: true, runValidators: true }).populate('vehicleDetails');
+        if (!driver) return res.status(404).json({ error: 'Driver not found' });
+        res.json({
+            message: 'Driver role and credit details updated successfully',
+            driver
+        });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }

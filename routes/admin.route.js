@@ -24,7 +24,7 @@ router.put('/:id', updateAdmin);  // Single endpoint for all updates
 router.delete('/:id', deleteAdmin);
 
 // Image routes
-router.post('/:id/image', upload.single('image'), uploadImage);
+router.post('/:id/upload-image', upload.single('image'), uploadImage);
 router.get('/:id/image', getAdminImage);
 router.delete('/:id/image', deleteImage);
 

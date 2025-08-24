@@ -1,5 +1,6 @@
 const mongoose = require('mongoose')
 
+
 const DriverSchema = mongoose.Schema({
     name: {
         type: String,
@@ -12,12 +13,17 @@ const DriverSchema = mongoose.Schema({
     },
     password: {
         type: String,
-        required: true
+        // required: true
     },
     vehicleDetails: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Vehicle",
         required: false
+    },
+    role: {
+        type: String,
+        enum: ['normal', 'credited'],
+        default: 'normal'
     },
     creditFuelRate: {
         type: Number,
