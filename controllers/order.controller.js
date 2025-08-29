@@ -541,40 +541,14 @@ exports.updateDriverDeliveryDetails = async (req, res) => {
 
         await order.save();
 
-        // ✅ Create CREDIT entry for cash payment when CustomersCash is provided
+        // ✅ Store CustomersCash for later ledger entry creation (when invoice is confirmed)
         if (CustomersCash !== undefined && CustomersCash > 0 && order.paymentType === 'cash') {
-            try {
-                console.log('💰 Creating CREDIT entry for cash payment received');
-                console.log('Order ID:', order._id);
-                console.log('User ID:', order.userId);
-                console.log('CustomersCash:', CustomersCash);
-                console.log('Payment Type:', order.paymentType);
-                
-                await LedgerService.createPaymentEntry(
-                    order.userId,
-                    order._id,
-                    CustomersCash,
-                    `Cash payment received - ${order.fuelQuantity}L fuel delivered`,
-                    {
-                        paymentMethod: 'cash',
-                        transactionId: `CASH_${order._id}_${Date.now()}`,
-                        bankRefNo: `CASH_${order._id}`,
-                        trackingId: `CASH_${order._id}`
-                    }
-                );
-                
-                console.log('✅ CREDIT entry created successfully for cash payment');
-            } catch (ledgerError) {
-                console.error('❌ CREDIT entry creation failed for cash payment:', ledgerError);
-                console.error('Error details:', {
-                    message: ledgerError.message,
-                    stack: ledgerError.stack,
-                    userId: order.userId,
-                    orderId: order._id,
-                    CustomersCash: CustomersCash
-                });
-                // Don't fail the delivery update if ledger fails
-            }
+            console.log('💰 Cash payment collected and stored for ledger entry');
+            console.log('Order ID:', order._id);
+            console.log('User ID:', order.userId);
+            console.log('CustomersCash:', CustomersCash);
+            console.log('Payment Type:', order.paymentType);
+            console.log('Note: CREDIT entry will be created when invoice is confirmed');
         }
 
         await order.populate([

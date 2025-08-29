@@ -18,19 +18,19 @@ Order Created (paymentType: 'cash')
     ↓
 Driver Delivers Fuel + Collects Cash
     ↓
-Driver Updates Order with CustomersCash
-    ↓
-System Creates CREDIT Entry (using CustomersCash)
+Driver Updates Order with CustomersCash (stored, no ledger entry yet)
     ↓
 Invoice Confirmed
     ↓
-System Creates DEBIT Entry (using Total amount)
+System Creates BOTH Entries:
+    - CREDIT Entry (using CustomersCash)
+    - DEBIT Entry (using Total amount)
 ```
 
 ### 2. **Ledger Entry Creation**
 
 #### **CREDIT Entry (Payment Received)**
-- **When**: Driver updates delivery details with `CustomersCash`
+- **When**: Invoice status is set to 'confirmed' or 'finalised' (for cash payments)
 - **Amount**: Uses `CustomersCash` value from the order
 - **Method**: `LedgerService.createPaymentEntry()` with `paymentMethod: 'cash'`
 - **Description**: "Cash payment received - X liters fuel delivered"
@@ -80,20 +80,10 @@ static async createDebitEntry(userId, orderId, amount, description, options) {
 
 #### **Modified `updateDriverDeliveryDetails` method:**
 ```javascript
-// ✅ Create CREDIT entry for cash payment when CustomersCash is provided
+// ✅ Store CustomersCash for later ledger entry creation (when invoice is confirmed)
 if (CustomersCash !== undefined && CustomersCash > 0 && order.paymentType === 'cash') {
-    await LedgerService.createPaymentEntry(
-        order.userId,
-        order._id,
-        CustomersCash,
-        `Cash payment received - ${order.fuelQuantity}L fuel delivered`,
-        {
-            paymentMethod: 'cash',
-            transactionId: `CASH_${order._id}_${Date.now()}`,
-            bankRefNo: `CASH_${order._id}`,
-            trackingId: `CASH_${order._id}`
-        }
-    );
+    console.log('💰 Cash payment collected and stored for ledger entry');
+    console.log('Note: CREDIT entry will be created when invoice is confirmed');
 }
 ```
 
@@ -115,23 +105,40 @@ await LedgerService.createCreditEntry(
 );
 ```
 
-#### **Modified invoice update (delivery entry):**
+#### **Modified invoice update (BOTH entries for cash payments):**
 ```javascript
-// Get the actual payment method from the order
-const Order = require('../models/Order.model.js');
-const order = await Order.findById(invoice.orderId._id);
-const actualPaymentMethod = order ? order.paymentType : 'credit';
-
-const ledgerResult = await LedgerService.createDeliveryEntry(
-    invoice.userId._id,
-    invoice.orderId._id,
-    deliveryAmount,
-    `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
-    {
-        paymentMethod: actualPaymentMethod,
-        invoiceId: invoice._id
-    }
-);
+// For cash payments, create BOTH CREDIT and DEBIT entries
+if (actualPaymentMethod === 'cash' && order && order.CustomersCash > 0) {
+    // 1. Create CREDIT entry using CustomersCash
+    const creditResult = await LedgerService.createPaymentEntry(
+        invoice.userId._id,
+        invoice.orderId._id,
+        order.CustomersCash,
+        `Cash payment received - ${order.fuelQuantity}L fuel delivered`,
+        {
+            paymentMethod: 'cash',
+            transactionId: `CASH_${order._id}_${Date.now()}`,
+            bankRefNo: `CASH_${order._id}`,
+            trackingId: `CASH_${order._id}`,
+            invoiceId: invoice._id
+        }
+    );
+    
+    // 2. Create DEBIT entry using order total amount
+    const debitResult = await LedgerService.createDeliveryEntry(
+        invoice.userId._id,
+        invoice.orderId._id,
+        order.amount, // Use order total amount for cash payments
+        `Fuel delivered - ${order.fuelQuantity}L fuel (Total: ₹${order.amount}) - Status: ${status || invoice.status}`,
+        {
+            paymentMethod: 'cash',
+            invoiceId: invoice._id
+        }
+    );
+} else {
+    // For non-cash payments, create only DEBIT entry as before
+    const ledgerResult = await LedgerService.createDeliveryEntry(/* ... */);
+}
 ```
 
 ## 🧮 Example Calculation
@@ -184,9 +191,9 @@ The system now provides detailed logging for cash payments:
 To test the cash payment system:
 
 1. Create an order with `paymentType: 'cash'`
-2. Update delivery details with `CustomersCash` amount
-3. Verify CREDIT entry is created with `CustomersCash` amount
-4. Confirm invoice to trigger DEBIT entry
+2. Update delivery details with `CustomersCash` amount (no ledger entry created yet)
+3. Confirm invoice to trigger BOTH entries
+4. Verify CREDIT entry is created with `CustomersCash` amount
 5. Verify DEBIT entry is created with order total amount
 6. Check ledger balance calculations
 
@@ -194,10 +201,11 @@ To test the cash payment system:
 
 ### **Common Issues:**
 
-1. **CREDIT entry not created**: Check if `CustomersCash > 0` and `paymentType === 'cash'`
+1. **CREDIT entry not created**: Check if `CustomersCash > 0`, `paymentType === 'cash'`, and invoice is confirmed
 2. **Wrong amounts**: Verify order has correct `amount` and `CustomersCash` values
 3. **Payment method mismatch**: Ensure `paymentMethod` is passed correctly to ledger service
 4. **Missing order data**: Check if order is properly populated when creating ledger entries
+5. **Both entries not created**: Ensure invoice status is set to 'confirmed' or 'finalised'
 
 ### **Debug Commands:**
 

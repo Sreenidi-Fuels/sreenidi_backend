@@ -100,8 +100,41 @@ const InvoiceSchema = new mongoose.Schema(
       default: "draft",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: function (_doc, ret) {
+        if (Object.prototype.hasOwnProperty.call(ret, 'amount')) {
+          ret.invoiceAmount = ret.amount;
+          delete ret.amount;
+        }
+        if (ret.paymentMethod === 'ccavenue') {
+          ret.paymentMethod = 'online';
+        }
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: function (_doc, ret) {
+        if (Object.prototype.hasOwnProperty.call(ret, 'amount')) {
+          ret.invoiceAmount = ret.amount;
+          delete ret.amount;
+        }
+        if (ret.paymentMethod === 'ccavenue') {
+          ret.paymentMethod = 'online';
+        }
+        return ret;
+      }
+    }
+  }
 );
+
+// Virtual for clearer naming
+InvoiceSchema.virtual('invoiceAmount')
+  .get(function () { return this.amount; })
+  .set(function (value) { this.amount = value; });
 
 // Generate fiscal-year-based invoice number: SF/YY1-YY2/N
 InvoiceSchema.statics.generateInvoiceNumber = async function() {

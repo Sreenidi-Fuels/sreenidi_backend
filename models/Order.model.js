@@ -151,7 +151,34 @@ const OrderSchema = new mongoose.Schema(
         }
       }
     }
-  }, { timestamps: true }
+  }, {
+    timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: function (_doc, ret) {
+        if (Object.prototype.hasOwnProperty.call(ret, 'amount')) {
+          ret.orderAmount = ret.amount;
+          delete ret.amount;
+        }
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: function (_doc, ret) {
+        if (Object.prototype.hasOwnProperty.call(ret, 'amount')) {
+          ret.orderAmount = ret.amount;
+          delete ret.amount;
+        }
+        return ret;
+      }
+    }
+  }
 );
+
+// Virtual for clearer naming in application code
+OrderSchema.virtual('orderAmount')
+  .get(function () { return this.amount; })
+  .set(function (value) { this.amount = value; });
 
 module.exports = mongoose.model("Order", OrderSchema);
