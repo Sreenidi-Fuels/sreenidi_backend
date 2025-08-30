@@ -20,7 +20,9 @@ Driver Delivers Fuel + Collects Cash
     ↓
 Driver Updates Order with CustomersCash (stored, no ledger entry yet)
     ↓
-Invoice Confirmed
+Invoice Confirmed (NO ledger entries created)
+    ↓
+Invoice Finalised
     ↓
 System Creates BOTH Entries:
     - CREDIT Entry (using CustomersCash)
@@ -30,13 +32,13 @@ System Creates BOTH Entries:
 ### 2. **Ledger Entry Creation**
 
 #### **CREDIT Entry (Payment Received)**
-- **When**: Invoice status is set to 'confirmed' or 'finalised' (for cash payments)
+- **When**: Invoice status is set to 'finalised' ONLY (for cash payments)
 - **Amount**: Uses `CustomersCash` value from the order
 - **Method**: `LedgerService.createPaymentEntry()` with `paymentMethod: 'cash'`
 - **Description**: "Cash payment received - X liters fuel delivered"
 
 #### **DEBIT Entry (Fuel Delivered)**
-- **When**: Invoice status is set to 'confirmed' or 'finalised'
+- **When**: Invoice status is set to 'finalised' ONLY
 - **Amount**: Uses order's `total amount` (not the passed amount)
 - **Method**: `LedgerService.createDeliveryEntry()` with `paymentMethod: 'cash'`
 - **Description**: "Fuel delivered - X liters fuel (Total: ₹X)"
@@ -192,20 +194,22 @@ To test the cash payment system:
 
 1. Create an order with `paymentType: 'cash'`
 2. Update delivery details with `CustomersCash` amount (no ledger entry created yet)
-3. Confirm invoice to trigger BOTH entries
-4. Verify CREDIT entry is created with `CustomersCash` amount
-5. Verify DEBIT entry is created with order total amount
-6. Check ledger balance calculations
+3. Confirm invoice (NO ledger entries should be created)
+4. Finalise invoice to trigger BOTH entries
+5. Verify CREDIT entry is created with `CustomersCash` amount
+6. Verify DEBIT entry is created with order total amount
+7. Check ledger balance calculations
 
 ## 🔧 Troubleshooting
 
 ### **Common Issues:**
 
-1. **CREDIT entry not created**: Check if `CustomersCash > 0`, `paymentType === 'cash'`, and invoice is confirmed
+1. **CREDIT entry not created**: Check if `CustomersCash > 0`, `paymentType === 'cash'`, and invoice is finalised
 2. **Wrong amounts**: Verify order has correct `amount` and `CustomersCash` values
 3. **Payment method mismatch**: Ensure `paymentMethod` is passed correctly to ledger service
 4. **Missing order data**: Check if order is properly populated when creating ledger entries
-5. **Both entries not created**: Ensure invoice status is set to 'confirmed' or 'finalised'
+5. **Both entries not created**: Ensure invoice status is set to 'finalised' ONLY
+6. **Duplicate entries**: System now automatically prevents duplicates by checking existing entries before creation
 
 ### **Debug Commands:**
 

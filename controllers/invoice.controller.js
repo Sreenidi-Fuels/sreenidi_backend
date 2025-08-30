@@ -314,22 +314,19 @@ const updateInvoice = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
     }
 
-    // ✅ FIX: Create DEBIT entry when fuel is delivered (invoice confirmed)
-    // This represents company delivering fuel to user
+    // ✅ FIX: Create ledger entries ONLY when status is set to 'finalised'
+    // This prevents duplicate entries when status changes from 'confirmed' to 'finalised'
     console.log('=== DEBUG: Invoice Status Check ===');
     console.log('Request body status:', status);
     console.log('Updated invoice status:', invoice.status);
-    console.log('Status comparison (status === "confirmed"):', status === 'confirmed');
-    console.log('Invoice already confirmed:', invoice.status === 'confirmed');
+    console.log('Status comparison (status === "finalised"):', status === 'finalised');
     
-    // Check if we need to create/update debit entry
-    // If status is being set to confirmed/finalised OR if invoice is already confirmed/finalised
-    const shouldHandleDeliveryEntry = (status === 'confirmed' || status === 'finalised') || (invoice.status === 'confirmed' || invoice.status === 'finalised');
+    // Check if we need to create ledger entries
+    // ONLY create entries when status is being set to 'finalised'
+    const shouldHandleDeliveryEntry = status === 'finalised';
     
     console.log('Should handle delivery entry:', shouldHandleDeliveryEntry);
-    console.log('Reason:', status === 'confirmed' ? 'Status being set to confirmed' : 
-                           status === 'finalised' ? 'Status being set to finalised' : 
-                           'Invoice already confirmed/finalised');
+    console.log('Reason:', shouldHandleDeliveryEntry ? 'Status being set to finalised' : 'Status not finalised - no ledger entries needed');
     
     if (shouldHandleDeliveryEntry) {
       // 🚨 CRITICAL FIX: Validate invoice amounts before creating ledger entries
@@ -341,24 +338,7 @@ const updateInvoice = async (req, res) => {
         return;
       }
       
-      // 🚨 CRITICAL: Check for existing DEBIT entries to prevent duplicates
-      const existingDebitEntries = await LedgerEntry.find({
-        invoiceId: invoice._id,
-        type: 'debit'
-      });
-      
-      if (existingDebitEntries.length > 0) {
-        console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for invoice:', invoice._id);
-        console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
-        
-        // 🚨 EMERGENCY: Delete all duplicate entries and create one correct one
-        console.log('🗑️ Deleting duplicate DEBIT entries...');
-        await LedgerEntry.deleteMany({
-          invoiceId: invoice._id,
-          type: 'debit'
-        });
-        console.log('✅ Duplicate entries deleted');
-      }
+
       
       try {
         console.log('=== Creating BOTH CREDIT and DEBIT Entries for Cash Payment ===');
@@ -385,6 +365,43 @@ const updateInvoice = async (req, res) => {
           console.log('CustomersCash:', order.CustomersCash);
           console.log('Order Total Amount:', order.amount);
           
+          // 🚨 CRITICAL: Check for existing entries to prevent duplicates
+          const existingCreditEntries = await LedgerEntry.find({
+            invoiceId: invoice._id,
+            type: 'credit',
+            paymentMethod: 'cash'
+          });
+          
+          const existingDebitEntries = await LedgerEntry.find({
+            invoiceId: invoice._id,
+            type: 'debit',
+            paymentMethod: 'cash'
+          });
+          
+          if (existingCreditEntries.length > 0) {
+            console.log('🚨 DUPLICATE CREDIT ENTRIES DETECTED for invoice:', invoice._id);
+            console.log('Existing entries:', existingCreditEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
+            console.log('🗑️ Deleting duplicate CREDIT entries...');
+            await LedgerEntry.deleteMany({
+              invoiceId: invoice._id,
+              type: 'credit',
+              paymentMethod: 'cash'
+            });
+            console.log('✅ Duplicate CREDIT entries deleted');
+          }
+          
+          if (existingDebitEntries.length > 0) {
+            console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for invoice:', invoice._id);
+            console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
+            console.log('🗑️ Deleting duplicate DEBIT entries...');
+            await LedgerEntry.deleteMany({
+              invoiceId: invoice._id,
+              type: 'debit',
+              paymentMethod: 'cash'
+            });
+            console.log('✅ Duplicate DEBIT entries deleted');
+          }
+          
           // 1. Create CREDIT entry using CustomersCash
           console.log('🆕 Creating CREDIT entry for cash payment received');
           const creditResult = await LedgerService.createPaymentEntry(
@@ -395,8 +412,6 @@ const updateInvoice = async (req, res) => {
             {
               paymentMethod: 'cash',
               transactionId: `CASH_${order._id}_${Date.now()}`,
-              bankRefNo: `CASH_${order._id}`,
-              trackingId: `CASH_${order._id}`,
               invoiceId: invoice._id
             }
           );
@@ -419,6 +434,23 @@ const updateInvoice = async (req, res) => {
         } else {
           // For non-cash payments, create only DEBIT entry as before
           console.log('🆕 Creating DEBIT entry for fuel delivery (non-cash payment)');
+          
+          // 🚨 CRITICAL: Check for existing entries to prevent duplicates
+          const existingDebitEntries = await LedgerEntry.find({
+            invoiceId: invoice._id,
+            type: 'debit'
+          });
+          
+          if (existingDebitEntries.length > 0) {
+            console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for invoice:', invoice._id);
+            console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
+            console.log('🗑️ Deleting duplicate DEBIT entries...');
+            await LedgerEntry.deleteMany({
+              invoiceId: invoice._id,
+              type: 'debit'
+            });
+            console.log('✅ Duplicate DEBIT entries deleted');
+          }
           
           // Map payment method for ledger entry (convert "online" to "ccavenue")
           const ledgerPaymentMethod = actualPaymentMethod === 'online' ? 'ccavenue' : actualPaymentMethod;
