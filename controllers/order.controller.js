@@ -58,6 +58,83 @@ const populateOptions = [
 // Create a new normal order
 exports.createOrder = async (req, res) => {
     try {
+        const { userId, amount, paymentType } = req.body;
+        
+        // 🚨 CRITICAL: Validate credit limit for credit orders
+        if (paymentType === 'credit') {
+            console.log('=== Credit Order Validation ===');
+            console.log('User ID:', userId);
+            console.log('Order Amount:', amount);
+            console.log('Payment Type:', paymentType);
+            
+            // Get user credit information
+            const User = require('../models/User.model.js');
+            const UserLedger = require('../models/UserLedger.model.js');
+            
+            const user = await User.findById(userId);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+            
+            // Check if user is eligible for credit
+            if (user.role !== 'credited') {
+                return res.status(400).json({ 
+                    error: 'User is not eligible for credit orders',
+                    userRole: user.role 
+                });
+            }
+            
+            // Check if user has a credit limit set
+            if (!user.creditLimit || user.creditLimit <= 0) {
+                return res.status(400).json({ 
+                    error: 'User does not have a valid credit limit set',
+                    creditLimit: user.creditLimit 
+                });
+            }
+            
+            // Get user's credit limit and usage (ACTIVE credit orders: pending, dispatched, completed)
+            const creditLimit = user.creditLimit;
+            const creditOrders = await Order.find({
+                userId,
+                paymentType: 'credit',
+                'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
+            }).select('amount');
+            const creditLimitUsed = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+            // Available = creditLimit - used (independent of outstanding)
+            const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
+            
+            console.log('Credit Validation Details:');
+            console.log('Credit Limit:', creditLimit);
+            // Outstanding is independent; not used for limit
+            const userLedger = await UserLedger.findOne({ userId });
+            const outstandingAmount = userLedger?.outstandingAmount || 0;
+            console.log('Outstanding Amount (independent):', outstandingAmount);
+            console.log('Amount of Credit Available:', amountOfCreditAvailable);
+            console.log('Requested Order Amount:', amount);
+            // Validate amount
+            if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+                return res.status(400).json({ error: 'Invalid order amount' });
+            }
+            
+            // Check if order amount exceeds available credit
+            if (amountOfCreditAvailable <= 0 || amount > amountOfCreditAvailable) {
+                return res.status(400).json({
+                    error: `Order amount (₹${amount}) exceeds available credit (₹${amountOfCreditAvailable})`,
+                    creditInfo: {
+                        creditLimit,
+                        outstandingAmount,
+                        creditLimitUsed,
+                        amountOfCreditAvailable,
+                        requestedAmount: amount,
+                        remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - amount)
+                    }
+                });
+            }
+            
+            console.log('✅ Credit validation passed');
+            console.log('Remaining credit after order:', amountOfCreditAvailable - amount);
+        }
+        
         const order = new Order(req.body);
         await order.save();
         await order.populate(populateOptions);
@@ -103,6 +180,81 @@ exports.createDirectCashOrder = async (req, res) => {
 // Create a direct credit order
 exports.createDirectCreditOrder = async (req, res) => {
     try {
+        const { userId, amount } = req.body;
+        
+        // 🚨 CRITICAL: Validate credit limit before creating order
+        console.log('=== Credit Order Validation ===');
+        console.log('User ID:', userId);
+        console.log('Order Amount:', amount);
+        console.log('Payment Type: credit');
+        
+        // Get user credit information
+        const User = require('../models/User.model.js');
+        const UserLedger = require('../models/UserLedger.model.js');
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // Check if user is eligible for credit
+        if (user.role !== 'credited') {
+            return res.status(400).json({ 
+                error: 'User is not eligible for credit orders',
+                userRole: user.role 
+            });
+        }
+        
+        // Check if user has a credit limit set
+        if (!user.creditLimit || user.creditLimit <= 0) {
+            return res.status(400).json({ 
+                error: 'User does not have a valid credit limit set',
+                creditLimit: user.creditLimit 
+            });
+        }
+        
+        // Get user's credit limit and usage (ACTIVE credit orders: pending, dispatched, completed)
+        const creditLimit = user.creditLimit;
+        const creditOrders = await Order.find({
+            userId,
+            paymentType: 'credit',
+            'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
+        }).select('amount');
+        const creditLimitUsed = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+        // Available = creditLimit - used (independent of outstanding)
+        const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
+
+        console.log('Credit Validation Details:');
+        console.log('Credit Limit:', creditLimit);
+        const userLedger = await UserLedger.findOne({ userId });
+        const outstandingAmount = userLedger?.outstandingAmount || 0;
+        console.log('Outstanding Amount (independent):', outstandingAmount);
+        console.log('Credit Limit Used:', creditLimitUsed);
+        console.log('Amount of Credit Available:', amountOfCreditAvailable);
+        console.log('Requested Order Amount:', amount);
+        
+        // Validate amount and available credit
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return res.status(400).json({ error: 'Invalid order amount' });
+        }
+        // Check if order amount exceeds available credit
+        if (amount > amountOfCreditAvailable) {
+            return res.status(400).json({
+                error: `Order amount (₹${amount}) exceeds available credit (₹${amountOfCreditAvailable})`,
+                creditInfo: {
+                    creditLimit,
+                    outstandingAmount,
+                    creditLimitUsed,
+                    amountOfCreditAvailable,
+                    requestedAmount: amount,
+                    remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - amount)
+                }
+            });
+        }
+        
+        console.log('✅ Credit validation passed');
+        console.log('Remaining credit after order:', amountOfCreditAvailable - amount);
+        
         const orderData = {
             ...req.body,
             orderType: 'direct',
@@ -113,35 +265,9 @@ exports.createDirectCreditOrder = async (req, res) => {
         const order = new Order(orderData);
         await order.save();
         await order.populate(populateOptions);
-        
-        // ✅ Create DEBIT entry for direct credit orders
-        try {
-            console.log('=== Creating DEBIT Entry for Direct Credit Order ===');
-            console.log('Order ID:', order._id);
-            console.log('User ID:', order.userId);
-            console.log('Amount:', order.amount);
-            console.log('Payment Type:', order.paymentType);
-            console.log('Fuel Quantity:', order.fuelQuantity);
-
-            await LedgerService.createDebitEntry(
-                order.userId, 
-                order._id, 
-                order.amount,
-                `Direct credit order - ${order.fuelQuantity}L fuel`
-            );
-
-            console.log('✅ DEBIT entry created successfully for direct credit order');
-        } catch (ledgerError) {
-            console.error('❌ DEBIT entry creation failed for direct credit order:', ledgerError);
-            console.error('Error details:', {
-                message: ledgerError.message,
-                stack: ledgerError.stack,
-                userId: order.userId,
-                orderId: order._id,
-                amount: order.amount
-            });
-            // Don't fail the order creation if ledger fails
-        }
+        // ℹ️ No DEBIT entry here for credit orders.
+        // DEBIT entry will be created when the invoice is updated to status 'finalised',
+        // using the invoice total amount (same as ccavenue flow).
         
         res.status(201).json(await orderWithPricing(order));
     } catch (err) {

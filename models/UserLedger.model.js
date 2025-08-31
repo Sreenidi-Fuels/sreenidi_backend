@@ -15,8 +15,8 @@ const UserLedgerSchema = new mongoose.Schema({
     },
     totalPaid: { 
         type: Number, 
-        default: 0, 
-        min: 0 
+        default: 0
+        // Removed min: 0 to allow negative values (admin can owe users money)
     },
     totalOrders: { 
         type: Number, 

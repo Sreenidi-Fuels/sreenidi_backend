@@ -50,11 +50,126 @@ exports.getUsers = async (req, res) => {
     }
 };
 
+// Helper function to calculate credit limit usage with automatic credit release
+async function calculateCreditLimitUsage(userId) {
+    try {
+        const Order = require('../models/Order.model.js');
+        const Invoice = require('../models/Invoice.model.js');
+        const UserLedger = require('../models/UserLedger.model.js');
+        
+        // Get all ACTIVE credit orders for this user (pending, dispatched, completed)
+        const creditOrders = await Order.find({
+            userId: userId,
+            paymentType: 'credit',
+            'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
+        }).select('_id amount');
+        
+        // Get user ledger to know total payments made
+        const userLedger = await UserLedger.findOne({ userId });
+        const totalPaid = userLedger ? userLedger.totalPaid : 0;
+        
+        let creditLimitUsed = 0;
+        
+        // Check each order to see if it should still count toward credit limit
+        for (const order of creditOrders) {
+            // Check if this order has a finalised invoice
+            const invoice = await Invoice.findOne({ 
+                orderId: order._id, 
+                status: 'finalised' 
+            });
+            
+            if (invoice) {
+                // Order has finalised invoice - check if it's been paid
+                const orderAmount = Number(order.amount) || 0;
+                
+                // Calculate how much of this order has been paid
+                // We need to check if the total payments cover this order
+                if (totalPaid >= orderAmount) {
+                    // This order is fully paid, don't count it toward credit limit
+                    console.log(`✅ Order ${order._id} (₹${orderAmount}) is fully paid - not counting toward credit limit`);
+                } else {
+                    // This order is partially paid, count remaining amount
+                    const remainingAmount = orderAmount - totalPaid;
+                    creditLimitUsed += remainingAmount;
+                    console.log(`⚠️ Order ${order._id} (₹${orderAmount}) is partially paid - counting ₹${remainingAmount} toward credit limit`);
+                }
+            } else {
+                // Order doesn't have finalised invoice yet - count it toward credit limit
+                creditLimitUsed += (Number(order.amount) || 0);
+                console.log(`💳 Order ${order._id} (₹${order.amount}) has no finalised invoice - counting toward credit limit`);
+            }
+        }
+        
+        console.log(`Credit limit usage for user ${userId}:`, {
+            totalOrders: creditOrders.length,
+            totalPaid: totalPaid,
+            creditLimitUsed: creditLimitUsed
+        });
+        
+        return creditLimitUsed;
+    } catch (error) {
+        console.error('Error calculating credit limit usage:', error);
+        return 0;
+    }
+}
+
 // Get all users with role 'credited'
 exports.getAllCreditedUsers = async (req, res) => {
     try {
         const users = await User.find({ role: 'credited' }).populate(['address', 'assets']);
-        res.json(users);
+        
+        // Add fresh credit data for all credited users
+        try {
+            const UserLedger = require('../models/UserLedger.model.js');
+            
+            const usersWithCreditData = await Promise.all(users.map(async (user) => {
+                const userLedger = await UserLedger.findOne({ userId: user._id });
+                const userData = user.toObject();
+                
+                if (userLedger) {
+                    // Add fresh credit data
+                    userData.outstandingAmount = userLedger.outstandingAmount;
+                    userData.totalPaid = userLedger.totalPaid;
+                    userData.totalOrders = userLedger.totalOrders;
+                    
+                    // ✅ FIXED: Calculate credit available based on credit limit usage, not outstanding amount
+                    if (user.creditLimit && user.creditLimit > 0) {
+                        const creditLimitUsed = await calculateCreditLimitUsage(user._id);
+                        userData.creditLimitUsed = creditLimitUsed;
+                        userData.amountOfCreditAvailable = Math.max(0, user.creditLimit - creditLimitUsed);
+                    } else {
+                        userData.creditLimitUsed = 0;
+                        userData.amountOfCreditAvailable = 0;
+                    }
+                    
+                    userData.lastTransactionDate = userLedger.lastTransactionDate;
+                } else {
+                    // No ledger found, set defaults
+                    userData.outstandingAmount = 0;
+                    userData.totalPaid = 0;
+                    userData.totalOrders = 0;
+                    
+                    // ✅ FIXED: Credit available equals credit limit when no orders used
+                    if (user.creditLimit && user.creditLimit > 0) {
+                        userData.creditLimitUsed = 0;
+                        userData.amountOfCreditAvailable = user.creditLimit;
+                    } else {
+                        userData.creditLimitUsed = 0;
+                        userData.amountOfCreditAvailable = 0;
+                    }
+                    
+                    userData.lastTransactionDate = null;
+                }
+                
+                return userData;
+            }));
+            
+            res.json(usersWithCreditData);
+        } catch (ledgerError) {
+            console.error('Error fetching user ledgers:', ledgerError);
+            // Fallback to basic user data if ledger fetch fails
+            res.json(users);
+        }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -65,7 +180,59 @@ exports.getUserById = async (req, res) => {
     try {
         const user = await User.findById(req.params.id).populate(['address', 'assets']);
         if (!user) return res.status(404).json({ error: 'User not found' });
-        res.json(user);
+        
+        // For credited users, add fresh credit data from UserLedger
+        if (user.role === 'credited') {
+            try {
+                const UserLedger = require('../models/UserLedger.model.js');
+                const userLedger = await UserLedger.findOne({ userId: req.params.id });
+                
+                const userData = user.toObject();
+                
+                if (userLedger) {
+                    // Add fresh credit data
+                    userData.outstandingAmount = userLedger.outstandingAmount;
+                    userData.totalPaid = userLedger.totalPaid;
+                    userData.totalOrders = userLedger.totalOrders;
+                    
+                    // ✅ FIXED: Calculate credit available based on credit limit usage, not outstanding amount
+                    if (user.creditLimit && user.creditLimit > 0) {
+                        const creditLimitUsed = await calculateCreditLimitUsage(req.params.id);
+                        userData.creditLimitUsed = creditLimitUsed;
+                        userData.amountOfCreditAvailable = Math.max(0, user.creditLimit - creditLimitUsed);
+                    } else {
+                        userData.creditLimitUsed = 0;
+                        userData.amountOfCreditAvailable = 0;
+                    }
+                    
+                    userData.lastTransactionDate = userLedger.lastTransactionDate;
+                } else {
+                    // No ledger found, set defaults
+                    userData.outstandingAmount = 0;
+                    userData.totalPaid = 0;
+                    userData.totalOrders = 0;
+                    
+                    // ✅ FIXED: Credit available equals credit limit when no orders used
+                    if (user.creditLimit && user.creditLimit > 0) {
+                        userData.creditLimitUsed = 0;
+                        userData.amountOfCreditAvailable = user.creditLimit;
+                    } else {
+                        userData.creditLimitUsed = 0;
+                        userData.amountOfCreditAvailable = 0;
+                    }
+                    
+                    userData.lastTransactionDate = null;
+                }
+                
+                res.json(userData);
+            } catch (ledgerError) {
+                console.error('Error fetching user ledger:', ledgerError);
+                // Fallback to basic user data if ledger fetch fails
+                res.json(user);
+            }
+        } else {
+            res.json(user);
+        }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

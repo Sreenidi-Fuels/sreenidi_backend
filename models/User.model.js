@@ -9,10 +9,11 @@ const UserSchema = new mongoose.Schema({
     address: [{ type: mongoose.Schema.Types.ObjectId, ref: "Address" }],
     role: { type: String, enum: ['normal', 'credited'], default: 'normal' },
     creditFuelRate: { type: Number, default: 0.0 },
-    creditAvailable: {
+    creditLimit: {
         type: Number,
         required: function() { return this.role === 'credited'; },
-        default: function() { return this.role === 'credited' ? 0 : undefined; }
+        default: function() { return this.role === 'credited' ? 0 : undefined; },
+        min: 0
     },
     assets: [{ type: mongoose.Schema.Types.ObjectId, ref: "Asset" }],
     feedback: [
@@ -23,7 +24,5 @@ const UserSchema = new mongoose.Schema({
         }
     ]
 }, { timestamps: true });
-
-
 
 module.exports = mongoose.model('User', UserSchema);

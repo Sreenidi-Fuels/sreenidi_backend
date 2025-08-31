@@ -431,9 +431,48 @@ const updateInvoice = async (req, res) => {
           );
           console.log('✅ DEBIT entry created successfully for fuel delivery:', debitResult);
           
+        } else if (actualPaymentMethod === 'credit') {
+          // For credit orders, create ONLY DEBIT entry (fuel delivered)
+          // CREDIT entry will be created later when user pays via credit payment API
+          console.log('💳 Credit order detected - Creating ONLY DEBIT entry');
+          console.log('Order Amount:', order.amount);
+          
+          // 🚨 CRITICAL: Check for existing entries to prevent duplicates
+          const existingDebitEntries = await LedgerEntry.find({
+            invoiceId: invoice._id,
+            type: 'debit',
+            paymentMethod: 'credit'
+          });
+          
+          if (existingDebitEntries.length > 0) {
+            console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for credit invoice:', invoice._id);
+            console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
+            console.log('🗑️ Deleting duplicate DEBIT entries...');
+            await LedgerEntry.deleteMany({
+              invoiceId: invoice._id,
+              type: 'debit',
+              paymentMethod: 'credit'
+            });
+            console.log('✅ Duplicate DEBIT entries deleted');
+          }
+          
+          // Create DEBIT entry for fuel delivery (credit order)
+          console.log('🆕 Creating DEBIT entry for credit order fuel delivery');
+          const debitResult = await LedgerService.createDeliveryEntry(
+            invoice.userId._id,
+            invoice.orderId._id,
+            deliveryAmount,
+            `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
+            {
+              paymentMethod: 'credit',
+              invoiceId: invoice._id
+            }
+          );
+          console.log('✅ DEBIT entry created successfully for credit order fuel delivery:', debitResult);
+          
         } else {
-          // For non-cash payments, create only DEBIT entry as before
-          console.log('🆕 Creating DEBIT entry for fuel delivery (non-cash payment)');
+          // For other payment types (ccavenue, online), create only DEBIT entry as before
+          console.log('🆕 Creating DEBIT entry for fuel delivery (other payment type)');
           
           // 🚨 CRITICAL: Check for existing entries to prevent duplicates
           const existingDebitEntries = await LedgerEntry.find({
