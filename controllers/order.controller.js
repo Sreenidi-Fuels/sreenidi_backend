@@ -55,6 +55,82 @@ const populateOptions = [
     }
 ];
 
+// Create a driver-initiated credit order
+exports.createDriverCreditOrder = async (req, res) => {
+    try {
+        const { userId, amount } = req.body;
+
+        // Validate presence of required fields for credit
+        if (!userId) {
+            return res.status(400).json({ error: 'userId is required for credit orders' });
+        }
+        if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+            return res.status(400).json({ error: 'Invalid order amount' });
+        }
+
+        // Credit validation (same as other credit flows)
+        const User = require('../models/User.model.js');
+        const UserLedger = require('../models/UserLedger.model.js');
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        if (user.role !== 'credited') {
+            return res.status(400).json({ error: 'User is not eligible for credit orders', userRole: user.role });
+        }
+        if (!user.creditLimit || user.creditLimit <= 0) {
+            return res.status(400).json({ error: 'User does not have a valid credit limit set', creditLimit: user.creditLimit });
+        }
+
+        // Use credit orders that still consume limit until repaid (pending/dispatched/completed)
+        const activeCreditOrders = await Order.find({
+            userId,
+            paymentType: 'credit',
+            'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
+        }).select('amount');
+        const creditLimitUsed = activeCreditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+        const amountOfCreditAvailable = Math.max(0, (user.creditLimit || 0) - creditLimitUsed);
+
+        if (amountOfCreditAvailable <= 0 || Number(amount) > amountOfCreditAvailable) {
+            return res.status(400).json({
+                error: `Order amount (₹${amount}) exceeds available credit (₹${amountOfCreditAvailable})`,
+                creditInfo: {
+                    creditLimit: user.creditLimit,
+                    creditLimitUsed,
+                    amountOfCreditAvailable,
+                    requestedAmount: Number(amount),
+                    remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - Number(amount))
+                }
+            });
+        }
+
+        const orderData = {
+            ...req.body,
+            orderType: 'driver-initiated',
+            paymentType: 'credit',
+            deliveryMode: req.body.deliveryMode || 'earliest',
+            receiverDetails: req.body.receiverDetails || { type: 'self' },
+            asset: req.body.asset || req.body.assetId
+        };
+
+        const order = new Order(orderData);
+        // Auto-complete dispatch and OTP for driver-initiated credit orders
+        // Keep orderConfirmation as default (pending) for admin to accept/reject
+        order.tracking.dispatch.status = 'completed';
+        order.tracking.fuelDispense.startVerified = true;
+        order.tracking.fuelDispense.stopVerified = true;
+        order.deliveredLiters = order.fuelQuantity;
+
+        await order.save();
+        await order.populate(populateOptions);
+        return res.status(201).json(await orderWithPricing(order));
+    } catch (err) {
+        console.error('Driver credit order creation failed:', err);
+        return res.status(400).json({ error: err.message });
+    }
+};
+
 // Create a new normal order
 exports.createOrder = async (req, res) => {
     try {
@@ -94,13 +170,13 @@ exports.createOrder = async (req, res) => {
             
             // Get user's credit limit and usage (ACTIVE credit orders: pending, dispatched, completed)
             const creditLimit = user.creditLimit;
-            const creditOrders = await Order.find({
+            // Use credit orders that still consume limit until repaid (pending/dispatched/completed)
+            const activeCreditOrders = await Order.find({
                 userId,
                 paymentType: 'credit',
                 'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
             }).select('amount');
-            const creditLimitUsed = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
-            // Available = creditLimit - used (independent of outstanding)
+            const creditLimitUsed = activeCreditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
             const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
             
             console.log('Credit Validation Details:');
@@ -166,7 +242,7 @@ exports.createDirectCashOrder = async (req, res) => {
             ...req.body,
             orderType: 'direct',
             paymentType: 'cash',
-            deliveryMode: 'earliest', // Direct orders are always immediate
+            // Preserve the deliveryMode from request body, don't override
         };
         const order = new Order(orderData);
         await order.save();
@@ -215,13 +291,13 @@ exports.createDirectCreditOrder = async (req, res) => {
         
         // Get user's credit limit and usage (ACTIVE credit orders: pending, dispatched, completed)
         const creditLimit = user.creditLimit;
-        const creditOrders = await Order.find({
+        // Use credit orders that still consume limit until repaid (pending/dispatched/completed)
+        const activeCreditOrders = await Order.find({
             userId,
             paymentType: 'credit',
             'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
         }).select('amount');
-        const creditLimitUsed = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
-        // Available = creditLimit - used (independent of outstanding)
+        const creditLimitUsed = activeCreditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
         const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
 
         console.log('Credit Validation Details:');
@@ -259,7 +335,7 @@ exports.createDirectCreditOrder = async (req, res) => {
             ...req.body,
             orderType: 'direct',
             paymentType: 'credit',
-            deliveryMode: 'earliest', // Direct orders are always immediate
+            // Preserve the deliveryMode from request body, don't override
             asset: req.body.assetId
         };
         const order = new Order(orderData);

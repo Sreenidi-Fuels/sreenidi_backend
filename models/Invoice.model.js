@@ -31,12 +31,12 @@ const InvoiceSchema = new mongoose.Schema(
     shippingAddress: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Address",
-      required: true,
+      required: false,
     },
     billingAddress: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Address",
-      required: true,
+      required: false,
     },
     dispatchedThrough: {
       type: String,
@@ -47,6 +47,10 @@ const InvoiceSchema = new mongoose.Schema(
       type: String,
       required: false,
       default: "N/A",
+    },
+    jcno: {
+      type: String,
+      default: ""
     },
     // NEW FIELDS
     paymentMethod: {

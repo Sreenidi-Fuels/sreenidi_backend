@@ -35,7 +35,8 @@ const createInvoice = async (req, res) => {
       sgst: sgstOverride,
       totalAmount,
       amountInChargeable,
-      invoiceAmount
+      invoiceAmount,
+      jcno
     } = req.body;
 
     if (!orderId) {
@@ -91,10 +92,11 @@ const createInvoice = async (req, res) => {
       orderId: order._id,
       userId: order.userId._id,
       vehicleId: vehicle ? vehicle._id : null,
-      shippingAddress: order.shippingAddress._id,
-      billingAddress: order.billingAddress._id,
+      shippingAddress: order.shippingAddress?._id || null,
+      billingAddress: order.billingAddress?._id || null,
       dispatchedThrough: null, // Will be updated later from frontend
       vehicleNO: vehicle ? vehicle.vehicleNo : null,
+      jcno: jcno ?? order.jcno ?? "",
       fuelQuantity: order.fuelQuantity,
       // Values provided by frontend
       amount: effectiveAmount,
@@ -256,13 +258,14 @@ const getInvoicesByOrderId = async (req, res) => {
 const updateInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    const { remarks, status, paymentMethod, destination, rate, amount, invoiceAmount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId, vehicleNO, dispatchedThrough } = req.body;
+    const { remarks, status, paymentMethod, destination, rate, amount, invoiceAmount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId, vehicleNO, dispatchedThrough, jcno } = req.body;
 
     const updateData = {};
     if (remarks !== undefined) updateData.remarks = remarks;
     if (status !== undefined) updateData.status = status;
     if (paymentMethod !== undefined) updateData.paymentMethod = paymentMethod;
     if (destination !== undefined) updateData.destination = destination;
+    if (jcno !== undefined) updateData.jcno = jcno;
     if (rate !== undefined) updateData.rate = rate;
     if (amount !== undefined || invoiceAmount !== undefined) updateData.amount = amount ?? invoiceAmount;
     if (vehicleId !== undefined) {

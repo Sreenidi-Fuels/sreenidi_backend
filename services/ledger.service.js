@@ -65,8 +65,8 @@ class LedgerService {
             // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
             userLedger.totalPaid += paymentAmount;           // ← CHANGED: totalPaid increases
-            // Outstanding amount = total orders - total paid (negative = company owes users fuel)
-            userLedger.outstandingAmount = userLedger.totalOrders - userLedger.totalPaid;
+            // Outstanding amount = total paid - total orders (admin perspective: negative = user owes admin, positive = admin owes user)
+            userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
             userLedger.lastTransactionDate = new Date();
             userLedger.lastPaymentDate = new Date();
             
@@ -77,6 +77,13 @@ class LedgerService {
             ]);
             
             await session.commitTransaction();
+            // Update user's credit availability based on latest totals
+            try {
+                await this.updateUserCreditAvailability(userIdObj);
+            } catch (availabilityError) {
+                // Non-fatal: log and continue
+                console.warn('⚠️ Failed to update user credit availability (payment):', availabilityError.message);
+            }
             return { success: true, ledgerEntry, userLedger };
             
         } catch (error) {
@@ -147,9 +154,8 @@ class LedgerService {
             // Update user ledger - ADMIN PERSPECTIVE
             userLedger.currentBalance = balanceAfter;
             userLedger.totalOrders += deliveryAmount;       // ← CHANGED: totalOrders increases (fuel delivered)
-            // Outstanding amount = total orders - total paid (negative = company owes users fuel)
-            userLedger.outstandingAmount = userLedger.totalOrders - userLedger.totalPaid;
-            userLedger.lastTransactionDate = new Date();
+            // Outstanding amount = total paid - total orders (admin perspective: negative = user owes admin, positive = admin owes user)
+            userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
             
             // Save both documents
             await Promise.all([
@@ -158,6 +164,13 @@ class LedgerService {
             ]);
             
             await session.commitTransaction();
+            // Update user's credit availability based on latest totals
+            try {
+                await this.updateUserCreditAvailability(userIdObj);
+            } catch (availabilityError) {
+                // Non-fatal: log and continue
+                console.warn('⚠️ Failed to update user credit availability (delivery):', availabilityError.message);
+            }
             return { success: true, ledgerEntry, userLedger };
             
         } catch (error) {
@@ -299,7 +312,7 @@ class LedgerService {
             ]);
             
             const overdueUsers = await UserLedger.countDocuments({ 
-                outstandingAmount: { $lt: 0 },  // ← CHANGED: Negative outstanding = company owes users fuel
+                outstandingAmount: { $lt: 0 },  // ← CHANGED: Negative outstanding = company has debt (owes users fuel)
                 lastPaymentDate: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 30 days
             });
             
@@ -347,9 +360,9 @@ class LedgerService {
             console.log('🧮 Calculated totals:', { totalPaid, totalOrders });
             
             // Calculate outstanding amount - ADMIN PERSPECTIVE
-            const outstandingAmount = totalOrders - totalPaid;  // ← CHANGED: Orders - Paid
+            const outstandingAmount = totalPaid - totalOrders;  // ← CHANGED: Paid - Orders (admin perspective: negative = user owes admin)
             
-            console.log('💰 Outstanding amount calculation:', `${totalOrders} - ${totalPaid} = ${outstandingAmount}`);
+            console.log('💰 Outstanding amount calculation:', `${totalPaid} - ${totalOrders} = ${outstandingAmount}`);
             
             // Update user ledger using findOneAndUpdate for atomic operation
             console.log('💾 Updating UserLedger in database...');
@@ -383,11 +396,91 @@ class LedgerService {
                 console.log('⚠️ No UserLedger found to update');
             }
             
+            // Update user's credit availability based on latest totals
+            try {
+                await this.updateUserCreditAvailability(userIdObj);
+            } catch (availabilityError) {
+                console.warn('⚠️ Failed to update user credit availability (recalc):', availabilityError.message);
+            }
             return { totalPaid, totalOrders, outstandingAmount };
         } catch (error) {
             console.error('❌ Error recalculating user ledger:', error);
             throw error;
         }
+    }
+
+    /**
+     * Update User.creditLimitUsed and amountOfCreditAvailable using business rules:
+     * - creditLimitUsed is driven by credit orders minus repayments recorded via credit-payment API
+     * - debit-payment entries must NOT affect availability
+     * - Clamp used to [0, creditLimit]
+     */
+    static async updateUserCreditAvailability(userId) {
+        const User = require('../models/User.model.js');
+        const Order = require('../models/Order.model.js');
+        const LedgerEntry = require('../models/LedgerEntry.model.js');
+        const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        const user = await User.findById(userIdObj);
+        if (!user) return;
+
+        // Sum all credit orders that are still within the lifecycle
+        const creditOrders = await Order.find({
+            userId: userIdObj,
+            paymentType: 'credit',
+            'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
+        }).select('amount');
+        const creditOrdersTotal = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+
+        // Sum credit payments recorded by credit-payment API (description starts with 'Credit payment received')
+        const creditPayments = await LedgerEntry.aggregate([
+            { $match: { userId: userIdObj, type: 'credit', description: { $regex: /^Credit payment received/ } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const creditPaymentsTotal = creditPayments.length ? creditPayments[0].total : 0;
+
+        // Compute usage and availability
+        const creditLimit = user.creditLimit || 0;
+        const usedRaw = Math.max(0, creditOrdersTotal - creditPaymentsTotal);
+        const creditLimitUsed = Math.min(usedRaw, creditLimit);
+        const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
+
+        // Persist on User
+        user.creditLimitUsed = creditLimitUsed;
+        user.amountOfCreditAvailable = amountOfCreditAvailable;
+        user.lastTransactionDate = new Date();
+        await user.save();
+        return { creditLimitUsed, amountOfCreditAvailable };
+    }
+
+    /**
+     * Compute (without persisting) user's credit availability using the same rules as updateUserCreditAvailability
+     */
+    static async computeCreditAvailability(userId) {
+        const User = require('../models/User.model.js');
+        const Order = require('../models/Order.model.js');
+        const LedgerEntry = require('../models/LedgerEntry.model.js');
+        const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+        const user = await User.findById(userIdObj);
+        if (!user) return { creditLimitUsed: 0, amountOfCreditAvailable: 0, creditLimit: 0 };
+
+        const creditOrders = await Order.find({
+            userId: userIdObj,
+            paymentType: 'credit',
+            'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
+        }).select('amount');
+        const creditOrdersTotal = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+
+        const creditPayments = await LedgerEntry.aggregate([
+            { $match: { userId: userIdObj, type: 'credit', description: { $regex: /^Credit payment received/ } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const creditPaymentsTotal = creditPayments.length ? creditPayments[0].total : 0;
+
+        const creditLimit = user.creditLimit || 0;
+        const usedRaw = Math.max(0, creditOrdersTotal - creditPaymentsTotal);
+        const creditLimitUsed = Math.min(usedRaw, creditLimit);
+        const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
+        return { creditLimitUsed, amountOfCreditAvailable, creditLimit };
     }
     
     /**

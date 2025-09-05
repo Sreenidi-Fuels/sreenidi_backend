@@ -36,8 +36,22 @@ const TrackingSchema = new mongoose.Schema(
 const OrderSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    shippingAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Address", required: true },
-    billingAddress: { type: mongoose.Schema.Types.ObjectId, ref: "Address", required: true },
+    shippingAddress: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "Address", 
+      required: function () { 
+        // For driver-initiated orders, address is optional
+        return this.orderType !== 'driver-initiated'; 
+      } 
+    },
+    billingAddress: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "Address", 
+      required: function () { 
+        // For driver-initiated orders, address is optional
+        return this.orderType !== 'driver-initiated'; 
+      } 
+    },
     fuelQuantity: {
       type: Number,
       required: true,
@@ -75,7 +89,7 @@ const OrderSchema = new mongoose.Schema(
     },
     orderType: {
       type: String,
-      enum: ['normal', 'direct'],
+      enum: ['normal', 'direct', 'driver-initiated'],
       default: 'normal',
     },
     paymentType: {

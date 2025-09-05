@@ -63,7 +63,8 @@ exports.recordCreditPayment = async (req, res) => {
             type: 'credit', // Money received
             amount: amountReceived,
             balanceBefore: userLedger.outstandingAmount,
-            balanceAfter: Math.max(0, userLedger.totalOrders - (userLedger.totalPaid + amountReceived)),
+            // Admin perspective: outstanding = totalPaid - totalOrders
+            balanceAfter: (userLedger.totalPaid + amountReceived) - userLedger.totalOrders,
             description: `Credit payment received - ${amountRefId}`,
             paymentMethod: resolvedPaymentMethod,
             paymentStatus: 'completed',
@@ -74,60 +75,22 @@ exports.recordCreditPayment = async (req, res) => {
         
         await creditEntry.save({ session });
         
-        // Update user ledger
+        // Update user ledger (totals + outstanding)
         const previousOutstanding = userLedger.outstandingAmount;
-        userLedger.totalPaid += amountReceived;  // ✅ Money received from user (like cash/ccavenue)
-        userLedger.outstandingAmount = Math.max(0, userLedger.totalOrders - userLedger.totalPaid);
+        userLedger.totalPaid += amountReceived;  // ✅ Money received from user
+        userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
         userLedger.lastTransactionDate = new Date(date);
         
         await userLedger.save({ session });
         
-        // Calculate new credit availability with automatic credit release
+        // Recompute credit capacity centrally (credit orders − credit repayments only)
         let amountOfCreditAvailable = 0;
-        if (user.role === 'credited' && user.creditLimit > 0) {
-            // Get credit orders total - but exclude orders with finalised invoices that have been paid
-            const Order = require('../models/Order.model.js');
-            const Invoice = require('../models/Invoice.model.js');
-            
-            // Get all credit orders
-            const creditOrders = await Order.find({
-                userId: userId,
-                paymentType: 'credit',
-                'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-            });
-            
-            let creditLimitUsed = 0;
-            
-            // Check each order to see if it should still count toward credit limit
-            for (const order of creditOrders) {
-                // Check if this order has a finalised invoice
-                const invoice = await Invoice.findOne({ 
-                    orderId: order._id, 
-                    status: 'finalised' 
-                });
-                
-                if (invoice) {
-                    // Order has finalised invoice - check if it's been paid
-                    // If the payment amount covers this order, don't count it toward credit limit
-                    const orderAmount = order.amount || 0;
-                    if (amountReceived >= orderAmount) {
-                        // This order is fully paid, don't count it toward credit limit
-                        console.log(`✅ Order ${order._id} (₹${orderAmount}) is fully paid - not counting toward credit limit`);
-                    } else {
-                        // This order is partially paid, count remaining amount
-                        const remainingAmount = orderAmount - amountReceived;
-                        creditLimitUsed += remainingAmount;
-                        console.log(`⚠️ Order ${order._id} (₹${orderAmount}) is partially paid - counting ₹${remainingAmount} toward credit limit`);
-                    }
-                } else {
-                    // Order doesn't have finalised invoice yet - count it toward credit limit
-                    creditLimitUsed += (order.amount || 0);
-                    console.log(`💳 Order ${order._id} (₹${order.amount}) has no finalised invoice - counting toward credit limit`);
-                }
-            }
-            
-            amountOfCreditAvailable = Math.max(0, user.creditLimit - creditLimitUsed);
-            console.log(`💰 Credit calculation: Limit: ₹${user.creditLimit}, Used: ₹${creditLimitUsed}, Available: ₹${amountOfCreditAvailable}`);
+        try {
+            const LedgerService = require('../services/ledger.service.js');
+            const { amountOfCreditAvailable: avail } = await LedgerService.updateUserCreditAvailability(userId);
+            amountOfCreditAvailable = avail || 0;
+        } catch (e) {
+            console.warn('⚠️ Failed to refresh credit availability after credit payment:', e.message);
         }
         
         await session.commitTransaction();
@@ -227,7 +190,8 @@ exports.recordDebitPayment = async (req, res) => {
             type: 'debit', // Fuel/order delivered
             amount: amountPaid,
             balanceBefore: userLedger.outstandingAmount,
-            balanceAfter: Math.max(0, (userLedger.totalOrders + amountPaid) - userLedger.totalPaid),
+            // Admin perspective: outstanding = totalPaid - totalOrders; increasing totalOrders reduces outstanding
+            balanceAfter: (userLedger.totalPaid) - (userLedger.totalOrders + amountPaid),
             description: `Debit payment made - ${amountRefId}`,
             paymentMethod: resolvedPaymentMethod,
             paymentStatus: 'completed',
@@ -238,27 +202,22 @@ exports.recordDebitPayment = async (req, res) => {
         
         await debitEntry.save({ session });
         
-        // Update user ledger
+        // Update user ledger (totals + outstanding only; capacity unaffected)
         const previousOutstanding = userLedger.outstandingAmount;
-        userLedger.totalOrders += amountPaid;  // ✅ Fuel/order delivered (like cash/ccavenue)
-        userLedger.outstandingAmount = Math.max(0, userLedger.totalOrders - userLedger.totalPaid);
+        userLedger.totalOrders += amountPaid;  // ✅ Increases delivered value
+        userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
         userLedger.lastTransactionDate = new Date(date);
         
         await userLedger.save({ session });
         
-        // Calculate new credit availability
+        // Recompute credit capacity centrally (should remain unaffected by debit payments)
         let amountOfCreditAvailable = 0;
-        if (user.role === 'credited' && user.creditLimit > 0) {
-            // Get credit orders total
-            const Order = require('../models/Order.model.js');
-            const creditOrders = await Order.find({
-                userId: userId,
-                paymentType: 'credit',
-                'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-            });
-            
-            const creditLimitUsed = creditOrders.reduce((sum, order) => sum + (order.amount || 0), 0);
-            amountOfCreditAvailable = Math.max(0, user.creditLimit - creditLimitUsed);
+        try {
+            const LedgerService = require('../services/ledger.service.js');
+            const { amountOfCreditAvailable: avail } = await LedgerService.updateUserCreditAvailability(userId);
+            amountOfCreditAvailable = avail || 0;
+        } catch (e) {
+            console.warn('⚠️ Failed to refresh credit availability after debit payment:', e.message);
         }
         
         await session.commitTransaction();
