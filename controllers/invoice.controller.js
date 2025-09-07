@@ -86,6 +86,36 @@ const createInvoice = async (req, res) => {
 
     const derivedPaymentMethod = paymentMethod ?? order.paymentDetails?.method ?? order.paymentType ?? null;
 
+    // Derive default rate for driver-initiated cash orders when not provided
+    let defaultRate = null;
+    try {
+      if (order.paymentType === 'cash' && order.orderType === 'driver-initiated') {
+        // Prefer driver's creditFuelRate if driver assigned
+        let driverRate = null;
+        try {
+          const Driver = require('../models/Driver.model.js');
+          const driverId = order?.tracking?.driverAssignment?.driverId;
+          if (driverId) {
+            const driver = await Driver.findById(driverId).select('creditFuelRate');
+            if (driver && driver.creditFuelRate) driverRate = Number(driver.creditFuelRate);
+          }
+        } catch (_) {}
+
+        if (driverRate != null) {
+          defaultRate = driverRate;
+        } else {
+          // Fallbacks: credited user's rate, otherwise admin dailyRate
+          if (order.userId && order.userId.role === 'credited' && order.userId.creditFuelRate) {
+            defaultRate = Number(order.userId.creditFuelRate);
+          } else {
+            const Admin = require('../models/Admin.model.js');
+            const admin = await Admin.findOne().select('dailyRate');
+            if (admin && admin.dailyRate != null) defaultRate = Number(admin.dailyRate);
+          }
+        }
+      }
+    } catch (_) {}
+
     const invoiceData = {
       invoiceNo,
       invoiceDate: new Date(),
@@ -100,7 +130,7 @@ const createInvoice = async (req, res) => {
       fuelQuantity: order.fuelQuantity,
       // Values provided by frontend
       amount: effectiveAmount,
-      rate: rate ?? null,
+      rate: rate ?? defaultRate,
       totalAmount: totalAmount ?? null,
       amountInChargeable: amountInChargeable ?? "",
       // Other fields
@@ -207,7 +237,10 @@ const getInvoiceById = async (req, res) => {
     const { id } = req.params;
 
     const invoice = await Invoice.findById(id)
-      .populate('orderId')
+      .populate({
+        path: 'orderId',
+        populate: { path: 'tracking.driverAssignment.driverId', select: 'name mobile role creditFuelRate' }
+      })
       .populate('userId', 'name email mobile')
       .populate('vehicleId')
       .populate('shippingAddress')
@@ -217,7 +250,25 @@ const getInvoiceById = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
     }
 
-    res.status(200).json({ success: true, data: invoice });
+    // Enrich response for driver-initiated cash orders
+    let enriched = invoice;
+    try {
+      const ord = invoice?.orderId;
+      if (ord && ord.paymentType === 'cash' && ord.orderType === 'driver-initiated') {
+        const drv = ord?.tracking?.driverAssignment?.driverId;
+        const driverInfo = drv ? {
+          driverId: drv._id,
+          name: drv.name,
+          mobile: drv.mobile,
+          role: drv.role,
+          creditFuelRate: drv.creditFuelRate || null
+        } : null;
+        enriched = invoice.toObject ? invoice.toObject() : invoice;
+        enriched.driverInfo = driverInfo;
+      }
+    } catch (_) {}
+
+    res.status(200).json({ success: true, data: enriched });
 
   } catch (error) {
     console.error('Error fetching invoice:', error);
@@ -509,6 +560,21 @@ const updateInvoice = async (req, res) => {
             }
           );
           console.log('✅ DEBIT entry created successfully for fuel delivery:', ledgerResult);
+        }
+
+        // Phase 2: For driver-initiated cash orders, also write to CashLedger
+        try {
+          const OrderModel = require('../models/Order.model.js');
+          const baseOrder = await OrderModel.findById(invoice.orderId._id);
+          if (baseOrder && baseOrder.paymentType === 'cash' && baseOrder.orderType === 'driver-initiated') {
+            const LedgerService = require('../services/ledger.service.js');
+            await LedgerService.createCashLedgerEntries(invoice.orderId._id, invoice._id, {
+              method: (invoice.paymentMethod === 'qr') ? 'qr' : 'cash'
+            });
+            console.log('✅ Cash ledger entries created for driver-initiated cash order');
+          }
+        } catch (cashLedgerErr) {
+          console.warn('⚠️ Failed to create cash ledger entries:', cashLedgerErr.message);
         }
         
         // Recalculate user ledger after creating entries

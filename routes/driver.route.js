@@ -21,6 +21,9 @@ router.patch('/:id/password', driverController.setDriverPassword);
 // Admin: Set driver role (normal/credited) and credit rate
 router.patch('/:id/role', driverController.setDriverRoleAndCredit);
 
+// Get daily rate for a driver
+router.get('/:id/dailyRate', driverController.getDriverDailyRate);
+
 // Update a driver by ID
 router.patch('/:id', driverController.updateDriver);
 

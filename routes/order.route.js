@@ -15,6 +15,9 @@ router.post('/direct/credit', orderController.createDirectCreditOrder);
 // Create a driver-initiated credit order
 router.post('/driver/credit', orderController.createDriverCreditOrder);
 
+// Create a driver-initiated cash order (QR or cash)
+router.post('/driver/cash', orderController.createDriverCashOrder);
+
 // Get all completed orders (regardless of user)
 router.get('/completed', orderController.getAllCompletedOrders);
 

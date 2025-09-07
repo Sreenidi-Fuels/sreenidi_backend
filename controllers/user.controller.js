@@ -40,11 +40,56 @@ exports.createUser = async (req, res) => {
     }
 };
 
-// Get all users
+// Get all users (augmented with ledger/credit fields like getUserById)
 exports.getUsers = async (req, res) => {
     try {
         const users = await User.find().populate(['address', 'assets']);
-        res.json(users);
+
+        // Augment with ledger-derived fields similar to getUserById
+        const LedgerService = require('../services/ledger.service.js');
+        const UserLedger = require('../models/UserLedger.model.js');
+
+        const enriched = await Promise.all(users.map(async (u) => {
+            const user = u.toObject();
+
+            if (user.role === 'credited') {
+                try {
+                    const userLedger = await UserLedger.findOne({ userId: user._id });
+                    if (userLedger) {
+                        user.outstandingAmount = userLedger.outstandingAmount;
+                        user.totalPaid = userLedger.totalPaid;
+                        user.totalOrders = userLedger.totalOrders;
+                        if (user.creditLimit && user.creditLimit > 0) {
+                            const { creditLimitUsed, amountOfCreditAvailable } = await LedgerService.computeCreditAvailability(user._id);
+                            user.creditLimitUsed = creditLimitUsed;
+                            user.amountOfCreditAvailable = amountOfCreditAvailable;
+                        } else {
+                            user.creditLimitUsed = 0;
+                            user.amountOfCreditAvailable = 0;
+                        }
+                        user.lastTransactionDate = userLedger.lastTransactionDate;
+                    } else {
+                        user.outstandingAmount = 0;
+                        user.totalPaid = 0;
+                        user.totalOrders = 0;
+                        if (user.creditLimit && user.creditLimit > 0) {
+                            user.creditLimitUsed = 0;
+                            user.amountOfCreditAvailable = user.creditLimit;
+                        } else {
+                            user.creditLimitUsed = 0;
+                            user.amountOfCreditAvailable = 0;
+                        }
+                        user.lastTransactionDate = null;
+                    }
+                } catch (_err) {
+                    // If ledger fetch fails for a user, keep base data
+                }
+            }
+
+            return user;
+        }));
+
+        res.json(enriched);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -132,11 +177,12 @@ exports.getAllCreditedUsers = async (req, res) => {
                     userData.totalPaid = userLedger.totalPaid;
                     userData.totalOrders = userLedger.totalOrders;
                     
-                    // ✅ FIXED: Calculate credit available based on credit limit usage, not outstanding amount
+                    // ✅ Use centralized availability computation
                     if (user.creditLimit && user.creditLimit > 0) {
-                        const creditLimitUsed = await calculateCreditLimitUsage(user._id);
+                        const LedgerService = require('../services/ledger.service.js');
+                        const { creditLimitUsed, amountOfCreditAvailable } = await LedgerService.computeCreditAvailability(user._id);
                         userData.creditLimitUsed = creditLimitUsed;
-                        userData.amountOfCreditAvailable = Math.max(0, user.creditLimit - creditLimitUsed);
+                        userData.amountOfCreditAvailable = amountOfCreditAvailable;
                     } else {
                         userData.creditLimitUsed = 0;
                         userData.amountOfCreditAvailable = 0;
@@ -195,11 +241,12 @@ exports.getUserById = async (req, res) => {
                     userData.totalPaid = userLedger.totalPaid;
                     userData.totalOrders = userLedger.totalOrders;
                     
-                    // ✅ FIXED: Calculate credit available based on credit limit usage, not outstanding amount
+                    // ✅ Use centralized availability computation
                     if (user.creditLimit && user.creditLimit > 0) {
-                        const creditLimitUsed = await calculateCreditLimitUsage(req.params.id);
+                        const LedgerService = require('../services/ledger.service.js');
+                        const { creditLimitUsed, amountOfCreditAvailable } = await LedgerService.computeCreditAvailability(req.params.id);
                         userData.creditLimitUsed = creditLimitUsed;
-                        userData.amountOfCreditAvailable = Math.max(0, user.creditLimit - creditLimitUsed);
+                        userData.amountOfCreditAvailable = amountOfCreditAvailable;
                     } else {
                         userData.creditLimitUsed = 0;
                         userData.amountOfCreditAvailable = 0;

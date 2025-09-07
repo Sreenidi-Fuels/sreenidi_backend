@@ -3,6 +3,68 @@ const UserLedger = require('../models/UserLedger.model.js');
 const mongoose = require('mongoose');
 
 class LedgerService {
+    /**
+     * Cash ledger for driver-initiated cash orders (separate namespace)
+     * Creates CREDIT = CustomersCash and DEBIT = order.amount when invoice is finalised
+     */
+    static async createCashLedgerEntries(orderId, invoiceId, options = {}) {
+        const CashLedgerEntry = require('../models/CashLedgerEntry.model.js');
+        const Order = require('../models/Order.model.js');
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        try {
+            const order = await Order.findById(orderId).session(session);
+            if (!order) throw new Error('Order not found');
+            if (order.paymentType !== 'cash') throw new Error('Not a cash order');
+
+            const method = (options.method || 'cash');
+            const creditAmount = Number(order.CustomersCash || 0);
+            const debitAmount = Number(order.amount || 0);
+
+            // Idempotency: ensure we don't duplicate for the same invoice
+            const existing = await CashLedgerEntry.find({ invoiceId }).session(session);
+            if (existing && existing.length) {
+                await session.commitTransaction();
+                return { success: true, skipped: true, reason: 'entries_exist', entries: existing };
+            }
+
+            const entriesToSave = [];
+            if (creditAmount > 0) {
+                entriesToSave.push(new CashLedgerEntry({
+                    orderId,
+                    invoiceId,
+                    entryType: 'credit',
+                    amount: creditAmount,
+                    method,
+                    description: `Cash/QR collected by driver`
+                }));
+            }
+            if (debitAmount > 0) {
+                entriesToSave.push(new CashLedgerEntry({
+                    orderId,
+                    invoiceId,
+                    entryType: 'debit',
+                    amount: debitAmount,
+                    method,
+                    description: `Fuel delivered - cash order`
+                }));
+            }
+
+            if (entriesToSave.length === 0) {
+                await session.commitTransaction();
+                return { success: true, skipped: true, reason: 'zero_amounts' };
+            }
+
+            await CashLedgerEntry.insertMany(entriesToSave, { session });
+            await session.commitTransaction();
+            return { success: true, entries: entriesToSave };
+        } catch (e) {
+            await session.abortTransaction();
+            throw e;
+        } finally {
+            session.endSession();
+        }
+    }
     
     /**
      * Create a CREDIT entry when payment is received (ADMIN PERSPECTIVE: Money coming IN)

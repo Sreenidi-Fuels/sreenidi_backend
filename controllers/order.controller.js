@@ -55,6 +55,74 @@ const populateOptions = [
     }
 ];
 
+// Create a driver-initiated cash order (QR or cash, no addresses required)
+exports.createDriverCashOrder = async (req, res) => {
+    try {
+        const { userId, fuelQuantity, amount, paymentMethod, receiverDetails, phoneNumber, deliveryMode, deliveryDate } = req.body;
+
+        // Required fields validation
+        if (!Number.isFinite(Number(fuelQuantity)) || Number(fuelQuantity) <= 0) return res.status(400).json({ error: 'fuelQuantity must be a positive number' });
+        if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
+        if (!paymentMethod || !['cash', 'qr'].includes(String(paymentMethod).toLowerCase())) return res.status(400).json({ error: 'paymentMethod must be cash or qr' });
+        if (!receiverDetails || typeof receiverDetails !== 'object') return res.status(400).json({ error: 'receiverDetails is required' });
+        if (!phoneNumber) return res.status(400).json({ error: 'phoneNumber is required' });
+
+        // If userId not provided, create/find a lightweight cash user using phoneNumber
+        let resolvedUserId = userId;
+        if (!resolvedUserId) {
+            const existing = await User.findOne({ phoneNumber });
+            if (existing) {
+                resolvedUserId = existing._id;
+            } else {
+                const safeLocalPart = String(phoneNumber || 'anonymous').replace(/[^a-zA-Z0-9]/g, '');
+                const tempUser = await User.create({
+                    name: receiverDetails?.name || 'Cash Customer',
+                    phoneNumber,
+                    email: `cash+${safeLocalPart}@sreenidhifuels.local`,
+                    role: 'normal'
+                });
+                resolvedUserId = tempUser._id;
+            }
+        }
+
+        const normalizedPaymentMethod = String(paymentMethod).toLowerCase() === 'qr' ? 'cash' : 'cash';
+
+        const orderData = {
+            userId: resolvedUserId,
+            fuelQuantity: Number(fuelQuantity),
+            amount: Number(amount),
+            paymentType: 'cash',
+            orderType: 'driver-initiated',
+            deliveryMode: deliveryMode || 'earliest',
+            deliveryDate: deliveryMode === 'scheduled' ? deliveryDate : undefined,
+            receiverDetails,
+            CustomersCash: Number(amount), // customer pays upfront; used later by invoice flow
+        };
+
+        const order = new Order(orderData);
+
+        // Driver-initiated cash: do not auto-complete dispatch/OTPs here.
+
+        await order.save();
+        await order.populate(populateOptions);
+
+        // Attach convenience fields for client
+        const response = await orderWithPricing(order);
+        response.paymentDetails = {
+            status: 'pending',
+            method: normalizedPaymentMethod,
+            currency: 'INR',
+            retryCount: 0
+        };
+        response.orderAmount = order.amount;
+        response.customerPhone = phoneNumber;
+
+        return res.status(201).json(response);
+    } catch (err) {
+        console.error('Driver cash order creation failed:', err);
+        return res.status(400).json({ error: err.message });
+    }
+};
 // Create a driver-initiated credit order
 exports.createDriverCreditOrder = async (req, res) => {
     try {
@@ -115,12 +183,7 @@ exports.createDriverCreditOrder = async (req, res) => {
         };
 
         const order = new Order(orderData);
-        // Auto-complete dispatch and OTP for driver-initiated credit orders
-        // Keep orderConfirmation as default (pending) for admin to accept/reject
-        order.tracking.dispatch.status = 'completed';
-        order.tracking.fuelDispense.startVerified = true;
-        order.tracking.fuelDispense.stopVerified = true;
-        order.deliveredLiters = order.fuelQuantity;
+        // Driver-initiated credit: do not auto-complete dispatch/OTPs here.
 
         await order.save();
         await order.populate(populateOptions);
@@ -529,6 +592,17 @@ exports.acceptOrder = async (req, res) => {
 
         // Update order confirmation status
         order.tracking.orderConfirmation.status = status;
+
+        // Only for driver-initiated orders: auto-verify OTPs when accepted
+        if (order.orderType === 'driver-initiated' && status === 'accepted') {
+            order.tracking.fuelDispense.startVerified = true;
+            order.tracking.fuelDispense.stopVerified = true;
+            // Optionally reflect delivered liters if not set yet
+            if (!order.deliveredLiters && order.fuelQuantity) {
+                order.deliveredLiters = order.fuelQuantity;
+            }
+        }
+
         await order.save();
         res.json(order);
     } catch (err) {
@@ -548,6 +622,12 @@ exports.assignDriver = async (req, res) => {
         }
 
         order.tracking.driverAssignment.driverId = driverId;
+        // For driver-initiated orders only, auto-update statuses upon assignment
+        if (order.orderType === 'driver-initiated') {
+            // Confirm order and mark dispatch as completed upon assignment
+            order.tracking.orderConfirmation.status = 'accepted';
+            order.tracking.dispatch.status = 'completed';
+        }
         await order.save();
         res.json(order);
     } catch (err) {
