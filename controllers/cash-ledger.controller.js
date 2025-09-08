@@ -99,7 +99,7 @@ exports.listAll = async (req, res) => {
             { $limit: limit },
             // Join order
             { $lookup: { from: 'orders', localField: 'orderId', foreignField: '_id', as: 'order' } },
-            { $unwind: '$order' },
+            { $unwind: { path: '$order', preserveNullAndEmptyArrays: true } },
             // Join invoice (optional)
             { $lookup: { from: 'invoices', localField: 'invoiceId', foreignField: '_id', as: 'invoice' } },
             { $unwind: { path: '$invoice', preserveNullAndEmptyArrays: true } },
@@ -147,6 +147,7 @@ exports.listAll = async (req, res) => {
     const total = agg[0]?.meta?.[0]?.total || 0;
 
     // Totals summary for this filter window
+    // Recompute totals using the same filter AND a bounded time/page window if needed
     const totalsAgg = await CashLedgerEntry.aggregate([
       { $match: match },
       { $group: {
