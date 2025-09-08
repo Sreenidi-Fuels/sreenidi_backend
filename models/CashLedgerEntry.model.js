@@ -16,3 +16,4 @@ CashLedgerEntrySchema.index({ invoiceId: 1, entryType: 1 });
 module.exports = mongoose.model('CashLedgerEntry', CashLedgerEntrySchema);
 
 
+
