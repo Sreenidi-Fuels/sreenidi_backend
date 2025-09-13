@@ -360,32 +360,51 @@ class LedgerService {
      */
     static async getAdminDashboardSummary() {
         try {
-            const summary = await UserLedger.aggregate([
+            // Join with Users to ensure we count real credited users and aggregate only over them
+            const summaryAgg = await UserLedger.aggregate([
+                { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
+                { $unwind: { path: '$user', preserveNullAndEmptyArrays: false } },
+                // Consider only credited users in admin summary
+                { $match: { 'user.role': 'credited' } },
                 {
                     $group: {
                         _id: null,
-                        totalUsers: { $sum: 1 },
+                        totalUsers: { $addToSet: '$userId' },
                         totalOutstanding: { $sum: '$outstandingAmount' },
-                        totalPaid: { $sum: '$totalPaid' },           // ← CHANGED: totalPaid
-                        totalOrders: { $sum: '$totalOrders' },       // ← CHANGED: totalOrders
+                        totalPaid: { $sum: '$totalPaid' },
+                        totalOrders: { $sum: '$totalOrders' },
                         averageOutstanding: { $avg: '$outstandingAmount' }
                     }
-                }
+                },
+                { $project: {
+                    _id: 0,
+                    totalUsers: { $size: '$totalUsers' },
+                    totalOutstanding: 1,
+                    totalPaid: 1,
+                    totalOrders: 1,
+                    averageOutstanding: 1
+                } }
             ]);
-            
-            const overdueUsers = await UserLedger.countDocuments({ 
-                outstandingAmount: { $lt: 0 },  // ← CHANGED: Negative outstanding = company has debt (owes users fuel)
-                lastPaymentDate: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 30 days
-            });
-            
+
+            // Overdue users: credited users with negative outstanding and last payment older than 30 days
+            const overdueAgg = await UserLedger.aggregate([
+                { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
+                { $unwind: { path: '$user', preserveNullAndEmptyArrays: false } },
+                { $match: { 'user.role': 'credited', outstandingAmount: { $lt: 0 }, lastPaymentDate: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+                { $count: 'count' }
+            ]);
+
+            const summary = summaryAgg[0] || { totalUsers: 0, totalOutstanding: 0, totalPaid: 0, totalOrders: 0, averageOutstanding: 0 };
+            const overdueUsers = overdueAgg[0]?.count || 0;
+
             return {
-                ...summary[0],
-                overdueUsers,
-                totalUsers: summary[0]?.totalUsers || 0,
-                totalOutstanding: summary[0]?.totalOutstanding || 0,
-                totalPaid: summary[0]?.totalPaid || 0,           // ← CHANGED: totalPaid
-                totalOrders: summary[0]?.totalOrders || 0,       // ← CHANGED: totalOrders
-                averageOutstanding: summary[0]?.averageOutstanding || 0
+                _id: null,
+                totalUsers: summary.totalUsers,
+                totalOutstanding: summary.totalOutstanding,
+                totalPaid: summary.totalPaid,
+                totalOrders: summary.totalOrders,
+                averageOutstanding: summary.averageOutstanding,
+                overdueUsers
             };
         } catch (error) {
             throw error;
@@ -490,8 +509,12 @@ class LedgerService {
             userId: userIdObj,
             paymentType: 'credit',
             'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-        }).select('amount');
-        const creditOrdersTotal = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+        }).select('amount totalAmount');
+        const creditOrdersTotal = creditOrders.reduce((sum, o) => {
+            // Use totalAmount if available, otherwise fall back to amount
+            const orderAmount = o.totalAmount !== null && o.totalAmount !== undefined ? o.totalAmount : o.amount;
+            return sum + (Number(orderAmount) || 0);
+        }, 0);
 
         // Sum credit payments recorded by credit-payment API (description starts with 'Credit payment received')
         const creditPayments = await LedgerEntry.aggregate([
@@ -529,8 +552,12 @@ class LedgerService {
             userId: userIdObj,
             paymentType: 'credit',
             'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-        }).select('amount');
-        const creditOrdersTotal = creditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+        }).select('amount totalAmount');
+        const creditOrdersTotal = creditOrders.reduce((sum, o) => {
+            // Use totalAmount if available, otherwise fall back to amount
+            const orderAmount = o.totalAmount !== null && o.totalAmount !== undefined ? o.totalAmount : o.amount;
+            return sum + (Number(orderAmount) || 0);
+        }, 0);
 
         const creditPayments = await LedgerEntry.aggregate([
             { $match: { userId: userIdObj, type: 'credit', description: { $regex: /^Credit payment received/ } } },

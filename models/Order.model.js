@@ -60,6 +60,23 @@ const OrderSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    // Additional charges and taxes
+    deliveryCharges: {
+      type: Number,
+      default: 0
+    },
+    cgst: {
+      type: Number,
+      default: 0
+    },
+    sgst: {
+      type: Number,
+      default: 0
+    },
+    totalAmount: {
+      type: Number,
+      default: null
+    },
     deliveryMode: {
       type: String,
       enum: ["earliest", "scheduled"],

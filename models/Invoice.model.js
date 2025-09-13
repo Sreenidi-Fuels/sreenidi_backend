@@ -50,7 +50,9 @@ const InvoiceSchema = new mongoose.Schema(
     },
     jcno: {
       type: String,
-      default: ""
+      default: "",
+      unique: true,
+      sparse: true
     },
     // NEW FIELDS
     paymentMethod: {

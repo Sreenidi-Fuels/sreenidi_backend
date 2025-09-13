@@ -69,14 +69,16 @@ const createInvoice = async (req, res) => {
 
     const invoiceNo = await Invoice.generateInvoiceNumber();
 
-    // Taxes: compute from deliveryCharges only if not explicitly provided
-    const taxes = {
-      deliveryCharges: deliveryCharges ?? 0,
-      cgst: cgstOverride,
-      sgst: sgstOverride
+    // Taxes: prefer explicit values from request, else inherit from order, else compute from deliveryCharges
+    const deliveryChargesInput = (deliveryCharges !== undefined ? deliveryCharges : (order.deliveryCharges !== undefined ? order.deliveryCharges : 0));
+    let taxes = {
+      deliveryCharges: deliveryChargesInput,
+      cgst: (cgstOverride !== undefined ? cgstOverride : (order.cgst !== undefined ? order.cgst : undefined)),
+      sgst: (sgstOverride !== undefined ? sgstOverride : (order.sgst !== undefined ? order.sgst : undefined))
     };
+    // If cgst/sgst are still undefined, compute them from deliveryChargesInput
     if (taxes.cgst === undefined || taxes.sgst === undefined) {
-      const { deliveryCharges: dc, cgst, sgst } = computeTaxes(deliveryCharges);
+      const { deliveryCharges: dc, cgst, sgst } = computeTaxes(deliveryChargesInput);
       taxes.deliveryCharges = dc;
       taxes.cgst = taxes.cgst === undefined ? cgst : taxes.cgst;
       taxes.sgst = taxes.sgst === undefined ? sgst : taxes.sgst;
@@ -142,6 +144,14 @@ const createInvoice = async (req, res) => {
       remarks,
       status: 'issued'
     };
+
+    // Enforce JC NO uniqueness on create if provided (non-empty)
+    if (invoiceData.jcno && invoiceData.jcno.trim() !== '') {
+      const exists = await Invoice.findOne({ jcno: invoiceData.jcno }).select('_id');
+      if (exists) {
+        return res.status(400).json({ success: false, error: 'JC No already exists. Please use a unique JC No.' });
+      }
+    }
 
     const invoice = new Invoice(invoiceData);
     await invoice.save();
@@ -316,7 +326,14 @@ const updateInvoice = async (req, res) => {
     if (status !== undefined) updateData.status = status;
     if (paymentMethod !== undefined) updateData.paymentMethod = paymentMethod;
     if (destination !== undefined) updateData.destination = destination;
-    if (jcno !== undefined) updateData.jcno = jcno;
+    if (jcno !== undefined) {
+      // Enforce uniqueness before attempting update
+      const exists = await Invoice.findOne({ jcno, _id: { $ne: id } }).select('_id');
+      if (exists) {
+        return res.status(400).json({ success: false, error: 'JC No already exists. Please use a unique JC No.' });
+      }
+      updateData.jcno = jcno;
+    }
     if (rate !== undefined) updateData.rate = rate;
     if (amount !== undefined || invoiceAmount !== undefined) updateData.amount = amount ?? invoiceAmount;
     if (vehicleId !== undefined) {
@@ -471,13 +488,13 @@ const updateInvoice = async (req, res) => {
           );
           console.log('✅ CREDIT entry created successfully for cash payment:', creditResult);
           
-          // 2. Create DEBIT entry using order total amount
+          // 2. Create DEBIT entry using invoice total amount (includes taxes and delivery charges)
           console.log('🆕 Creating DEBIT entry for fuel delivery');
           const debitResult = await LedgerService.createDeliveryEntry(
             invoice.userId._id,
             invoice.orderId._id,
-            order.amount, // Use order total amount for cash payments
-            `Fuel delivered - ${order.fuelQuantity}L fuel (Total: ₹${order.amount}) - Status: ${status || invoice.status}`,
+            deliveryAmount, // Use invoice total amount (includes taxes) for cash payments
+            `Fuel delivered - ${order.fuelQuantity}L fuel (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
             {
               paymentMethod: 'cash',
               invoiceId: invoice._id

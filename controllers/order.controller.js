@@ -156,19 +156,28 @@ exports.createDriverCreditOrder = async (req, res) => {
             userId,
             paymentType: 'credit',
             'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-        }).select('amount');
-        const creditLimitUsed = activeCreditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+        }).select('amount totalAmount');
+        const creditLimitUsed = activeCreditOrders.reduce((sum, o) => {
+            // Use totalAmount if available, otherwise fall back to amount
+            const orderAmount = o.totalAmount !== null && o.totalAmount !== undefined ? o.totalAmount : o.amount;
+            return sum + (Number(orderAmount) || 0);
+        }, 0);
         const amountOfCreditAvailable = Math.max(0, (user.creditLimit || 0) - creditLimitUsed);
 
-        if (amountOfCreditAvailable <= 0 || Number(amount) > amountOfCreditAvailable) {
+        // Use totalAmount for validation if provided, otherwise use amount; coerce to Number
+        const validationAmount = Number(
+            (req.body.totalAmount ?? amount)
+        );
+
+        if (amountOfCreditAvailable <= 0 || validationAmount > amountOfCreditAvailable) {
             return res.status(400).json({
-                error: `Order amount (₹${amount}) exceeds available credit (₹${amountOfCreditAvailable})`,
+                error: `Order amount (₹${validationAmount}) exceeds available credit (₹${amountOfCreditAvailable})`,
                 creditInfo: {
                     creditLimit: user.creditLimit,
                     creditLimitUsed,
                     amountOfCreditAvailable,
-                    requestedAmount: Number(amount),
-                    remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - Number(amount))
+                    requestedAmount: validationAmount,
+                    remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - validationAmount)
                 }
             });
         }
@@ -179,7 +188,9 @@ exports.createDriverCreditOrder = async (req, res) => {
             paymentType: 'credit',
             deliveryMode: req.body.deliveryMode || 'earliest',
             receiverDetails: req.body.receiverDetails || { type: 'self' },
-            asset: req.body.asset || req.body.assetId
+            asset: req.body.asset || req.body.assetId,
+            // For credit orders, use totalAmount as the order amount
+            amount: req.body.totalAmount || req.body.amount
         };
 
         const order = new Order(orderData);
@@ -204,6 +215,7 @@ exports.createOrder = async (req, res) => {
             console.log('=== Credit Order Validation ===');
             console.log('User ID:', userId);
             console.log('Order Amount:', amount);
+            console.log('Total Amount:', req.body.totalAmount);
             console.log('Payment Type:', paymentType);
             
             // Get user credit information
@@ -238,9 +250,18 @@ exports.createOrder = async (req, res) => {
                 userId,
                 paymentType: 'credit',
                 'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-            }).select('amount');
-            const creditLimitUsed = activeCreditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+            }).select('amount totalAmount');
+            const creditLimitUsed = activeCreditOrders.reduce((sum, o) => {
+                // Use totalAmount if available, otherwise fall back to amount
+                const orderAmount = o.totalAmount !== null && o.totalAmount !== undefined ? o.totalAmount : o.amount;
+                return sum + (Number(orderAmount) || 0);
+            }, 0);
             const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
+            
+            // Use totalAmount for validation if provided, otherwise use amount; coerce to Number
+            const validationAmount = Number(
+                (req.body.totalAmount ?? amount)
+            );
             
             console.log('Credit Validation Details:');
             console.log('Credit Limit:', creditLimit);
@@ -249,32 +270,39 @@ exports.createOrder = async (req, res) => {
             const outstandingAmount = userLedger?.outstandingAmount || 0;
             console.log('Outstanding Amount (independent):', outstandingAmount);
             console.log('Amount of Credit Available:', amountOfCreditAvailable);
-            console.log('Requested Order Amount:', amount);
+            console.log('Requested Order Amount (for validation):', validationAmount);
+            console.log('Using totalAmount for validation:', req.body.totalAmount !== null && req.body.totalAmount !== undefined);
+            
             // Validate amount
-            if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+            if (!Number.isFinite(Number(validationAmount)) || Number(validationAmount) <= 0) {
                 return res.status(400).json({ error: 'Invalid order amount' });
             }
             
             // Check if order amount exceeds available credit
-            if (amountOfCreditAvailable <= 0 || amount > amountOfCreditAvailable) {
+            if (amountOfCreditAvailable <= 0 || validationAmount > amountOfCreditAvailable) {
                 return res.status(400).json({
-                    error: `Order amount (₹${amount}) exceeds available credit (₹${amountOfCreditAvailable})`,
+                    error: `Order amount (₹${validationAmount}) exceeds available credit (₹${amountOfCreditAvailable})`,
                     creditInfo: {
                         creditLimit,
                         outstandingAmount,
                         creditLimitUsed,
                         amountOfCreditAvailable,
-                        requestedAmount: amount,
-                        remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - amount)
+                        requestedAmount: validationAmount,
+                        remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - validationAmount)
                     }
                 });
             }
             
             console.log('✅ Credit validation passed');
-            console.log('Remaining credit after order:', amountOfCreditAvailable - amount);
+            console.log('Remaining credit after order:', amountOfCreditAvailable - validationAmount);
         }
         
-        const order = new Order(req.body);
+        // For credit orders, use totalAmount as the order amount
+        const orderData = {
+            ...req.body,
+            ...(req.body.paymentType === 'credit' && { amount: req.body.totalAmount || req.body.amount })
+        };
+        const order = new Order(orderData);
         await order.save();
         await order.populate(populateOptions);
         
@@ -325,6 +353,7 @@ exports.createDirectCreditOrder = async (req, res) => {
         console.log('=== Credit Order Validation ===');
         console.log('User ID:', userId);
         console.log('Order Amount:', amount);
+        console.log('Total Amount:', req.body.totalAmount);
         console.log('Payment Type: credit');
         
         // Get user credit information
@@ -359,9 +388,18 @@ exports.createDirectCreditOrder = async (req, res) => {
             userId,
             paymentType: 'credit',
             'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-        }).select('amount');
-        const creditLimitUsed = activeCreditOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+        }).select('amount totalAmount');
+        const creditLimitUsed = activeCreditOrders.reduce((sum, o) => {
+            // Use totalAmount if available, otherwise fall back to amount
+            const orderAmount = o.totalAmount !== null && o.totalAmount !== undefined ? o.totalAmount : o.amount;
+            return sum + (Number(orderAmount) || 0);
+        }, 0);
         const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
+
+        // Use totalAmount for validation if provided, otherwise use amount; coerce to Number
+        const validationAmount = Number(
+            (req.body.totalAmount ?? amount)
+        );
 
         console.log('Credit Validation Details:');
         console.log('Credit Limit:', creditLimit);
@@ -370,36 +408,39 @@ exports.createDirectCreditOrder = async (req, res) => {
         console.log('Outstanding Amount (independent):', outstandingAmount);
         console.log('Credit Limit Used:', creditLimitUsed);
         console.log('Amount of Credit Available:', amountOfCreditAvailable);
-        console.log('Requested Order Amount:', amount);
+        console.log('Requested Order Amount (for validation):', validationAmount);
+        console.log('Using totalAmount for validation:', req.body.totalAmount !== null && req.body.totalAmount !== undefined);
         
         // Validate amount and available credit
-        if (!Number.isFinite(amount) || amount <= 0) {
+        if (!Number.isFinite(validationAmount) || validationAmount <= 0) {
             return res.status(400).json({ error: 'Invalid order amount' });
         }
         // Check if order amount exceeds available credit
-        if (amount > amountOfCreditAvailable) {
+        if (validationAmount > amountOfCreditAvailable) {
             return res.status(400).json({
-                error: `Order amount (₹${amount}) exceeds available credit (₹${amountOfCreditAvailable})`,
+                error: `Order amount (₹${validationAmount}) exceeds available credit (₹${amountOfCreditAvailable})`,
                 creditInfo: {
                     creditLimit,
                     outstandingAmount,
                     creditLimitUsed,
                     amountOfCreditAvailable,
-                    requestedAmount: amount,
-                    remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - amount)
+                    requestedAmount: validationAmount,
+                    remainingCreditAfterOrder: Math.max(0, amountOfCreditAvailable - validationAmount)
                 }
             });
         }
         
         console.log('✅ Credit validation passed');
-        console.log('Remaining credit after order:', amountOfCreditAvailable - amount);
+        console.log('Remaining credit after order:', amountOfCreditAvailable - validationAmount);
         
         const orderData = {
             ...req.body,
             orderType: 'direct',
             paymentType: 'credit',
             // Preserve the deliveryMode from request body, don't override
-            asset: req.body.assetId
+            asset: req.body.assetId,
+            // For credit orders, use totalAmount as the order amount
+            amount: req.body.totalAmount || req.body.amount
         };
         const order = new Order(orderData);
         await order.save();
@@ -811,7 +852,17 @@ exports.updateDriverDeliveryDetails = async (req, res) => {
         if (!order) return res.status(404).json({ error: 'Order not found' });
 
         const { jcno, deliveredLiters, CustomersCash } = req.body;
-        if (jcno !== undefined) order.jcno = jcno;
+        if (jcno !== undefined) {
+            // Enforce JC No uniqueness across Orders and Invoices
+            const [existingOrder, existingInvoice] = await Promise.all([
+                Order.findOne({ jcno: jcno, _id: { $ne: order._id } }).select('_id'),
+                require('../models/Invoice.model.js').findOne({ jcno: jcno }).select('_id')
+            ]);
+            if (existingOrder || existingInvoice) {
+                return res.status(400).json({ error: 'JC No already exists. Please use a unique JC No.' });
+            }
+            order.jcno = jcno;
+        }
         if (deliveredLiters !== undefined) order.deliveredLiters = deliveredLiters;
         if (CustomersCash !== undefined) order.CustomersCash = CustomersCash;
         if (req.file) {
