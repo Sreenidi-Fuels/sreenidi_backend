@@ -446,8 +446,8 @@ exports.getUserDailyRate = async (req, res) => {
         if (user.role === 'credited') {
             dailyRate = user.creditFuelRate;
         } else {
-            // Get the latest admin (or you can use a specific admin if needed)
-            const admin = await require('../models/Admin.model').findOne().sort({ createdAt: -1 });
+            // Get the most recently updated admin (to get the latest dailyRate)
+            const admin = await require('../models/Admin.model').findOne().sort({ updatedAt: -1 });
             if (!admin) return res.status(404).json({ error: 'Admin data not found' });
             dailyRate = admin.dailyRate;
         }

@@ -195,7 +195,7 @@ exports.getDriverDailyRate = async (req, res) => {
             dailyRate = Number(driver.creditFuelRate || 0);
         } else {
             const Admin = require('../models/Admin.model');
-            const admin = await Admin.findOne().sort({ createdAt: -1 });
+            const admin = await Admin.findOne().sort({ updatedAt: -1 });
             if (!admin) return res.status(404).json({ error: 'Admin data not found' });
             dailyRate = Number(admin.dailyRate || 0);
         }

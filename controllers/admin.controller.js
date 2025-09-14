@@ -137,6 +137,31 @@ const updateAdmin = async (req, res) => {
             return res.status(404).json({ message: 'Admin not found' });
         }
 
+        // If dailyRate was updated, propagate to all normal users and drivers
+        if (req.body.dailyRate !== undefined) {
+            try {
+                const User = require('../models/User.model.js');
+                const Driver = require('../models/Driver.model.js');
+                
+                // Update all users with role 'normal' to use the new dailyRate
+                await User.updateMany(
+                    { role: 'normal' },
+                    { $unset: { creditFuelRate: 1 } } // Remove creditFuelRate for normal users
+                );
+                
+                // Update all drivers to use the new dailyRate
+                await Driver.updateMany(
+                    {},
+                    { $unset: { creditFuelRate: 1 } } // Remove creditFuelRate for drivers
+                );
+                
+                console.log(`✅ Daily rate updated to ${req.body.dailyRate} for all normal users and drivers`);
+            } catch (propagationError) {
+                console.error('Error propagating daily rate:', propagationError);
+                // Don't fail the admin update if propagation fails
+            }
+        }
+
         res.json({
             id: admin._id,
             name: admin.name,
@@ -254,6 +279,25 @@ const deleteImage = async (req, res) => {
     }
 };
 
+// Get current daily rate
+const getDailyRate = async (req, res) => {
+    try {
+        // Get the most recently updated admin to get the latest dailyRate
+        const admin = await Admin.findOne().sort({ updatedAt: -1 });
+        if (!admin) {
+            return res.status(404).json({ error: 'Admin data not found' });
+        }
+        
+        res.json({ 
+            dailyRate: admin.dailyRate,
+            lastUpdated: admin.updatedAt,
+            adminId: admin._id
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching daily rate', details: error.message });
+    }
+};
+
 module.exports = {
     upload,
     uploadImage,
@@ -265,5 +309,6 @@ module.exports = {
     deleteAdmin,
     deleteImage,
     loginAdmin,
-    setAdminPassword  // Changed from changePassword to setAdminPassword
+    setAdminPassword,  // Changed from changePassword to setAdminPassword
+    getDailyRate
 };
