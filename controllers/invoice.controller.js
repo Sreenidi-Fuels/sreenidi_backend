@@ -664,9 +664,12 @@ const generateInvoiceForCompletedOrder = async (orderId, vehicleId, remarks = ""
       return { success: false, error: 'Order not found' };
     }
 
-    const vehicle = await Vehicle.findById(vehicleId);
-    if (!vehicle) {
-      return { success: false, error: 'Vehicle not found' };
+    let vehicle = null;
+    if (vehicleId) {
+      vehicle = await Vehicle.findById(vehicleId);
+      if (!vehicle) {
+        return { success: false, error: 'Vehicle not found' };
+      }
     }
 
     const invoiceNo = await Invoice.generateInvoiceNumber();
@@ -676,11 +679,11 @@ const generateInvoiceForCompletedOrder = async (orderId, vehicleId, remarks = ""
       invoiceDate: new Date(),
       orderId: order._id,
       userId: order.userId._id,
-      vehicleId: vehicle._id,
-      shippingAddress: order.shippingAddress._id,
-      billingAddress: order.billingAddress._id,
-      dispatchedThrough: vehicle.fuelCapacity,
-      vehicleNO: vehicle.vehicleNo,
+      vehicleId: vehicle ? vehicle._id : null,
+      shippingAddress: order.shippingAddress ? order.shippingAddress._id : null,
+      billingAddress: order.billingAddress ? order.billingAddress._id : null,
+      dispatchedThrough: vehicle ? vehicle.fuelCapacity : null,
+      vehicleNO: vehicle ? vehicle.vehicleNo : null,
       fuelQuantity: order.fuelQuantity,
       // Neutral defaults for frontend to update later
       amount: null,

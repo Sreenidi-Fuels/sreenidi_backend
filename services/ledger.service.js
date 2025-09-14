@@ -10,6 +10,7 @@ class LedgerService {
     static async createCashLedgerEntries(orderId, invoiceId, options = {}) {
         const CashLedgerEntry = require('../models/CashLedgerEntry.model.js');
         const Order = require('../models/Order.model.js');
+        const Invoice = require('../models/Invoice.model.js');
         const session = await mongoose.startSession();
         session.startTransaction();
         try {
@@ -17,9 +18,13 @@ class LedgerService {
             if (!order) throw new Error('Order not found');
             if (order.paymentType !== 'cash') throw new Error('Not a cash order');
 
+            // Get invoice to use total amount instead of order amount
+            const invoice = await Invoice.findById(invoiceId).session(session);
+            const invoiceTotalAmount = invoice ? Number(invoice.totalAmount || 0) : Number(order.amount || 0);
+
             const method = (options.method || 'cash');
             const creditAmount = Number(order.CustomersCash || 0);
-            const debitAmount = Number(order.amount || 0);
+            const debitAmount = invoiceTotalAmount; // Use invoice total amount instead of order amount
 
             // Idempotency: ensure we don't duplicate for the same invoice
             const existing = await CashLedgerEntry.find({ invoiceId }).session(session);
@@ -175,12 +180,9 @@ class LedgerService {
             const order = await Order.findById(orderIdObj).session(session);
             const deliveredLiters = order ? order.deliveredLiters : null;
             
-            // For cash payments, use the order's total amount instead of the passed amount
+            // Use the passed amount (which should be invoice total amount for cash payments)
             let deliveryAmount = amount;
-            if (paymentMethod === 'cash' && order && order.amount !== null && order.amount !== undefined) {
-                deliveryAmount = order.amount;
-                console.log(`🚛 Cash delivery detected: Using order total amount (₹${deliveryAmount}) instead of passed amount (₹${amount})`);
-            }
+            console.log(`🚛 Delivery entry: Using passed amount (₹${deliveryAmount}) for ${paymentMethod} payment`);
             
             // Get or create user ledger
             let userLedger = await UserLedger.findOne({ userId: userIdObj }).session(session);

@@ -734,36 +734,7 @@ exports.validateStopDispenseOtp = async (req, res) => {
             order.tracking.dispatch.status = 'completed'
             await order.save();
             
-            // Generate invoice when order is completed
-            try {
-                const { generateInvoiceForCompletedOrder } = require('./invoice.controller.js');
-                
-                // Get vehicle ID from the driver's vehicle details
-                let vehicleId = null;
-                if (order.tracking.driverAssignment.driverId) {
-                    const Driver = require('../models/Driver.model.js');
-                    const driver = await Driver.findById(order.tracking.driverAssignment.driverId)
-                        .populate('vehicleDetails');
-                    
-                    if (driver && driver.vehicleDetails) {
-                        vehicleId = driver.vehicleDetails._id;
-                    }
-                }
-                
-                if (vehicleId) {
-                    const invoiceResult = await generateInvoiceForCompletedOrder(order._id, vehicleId);
-                    if (invoiceResult.success) {
-                        console.log('Invoice generated successfully:', invoiceResult.invoiceId);
-                    } else {
-                        console.log('Failed to generate invoice:', invoiceResult.error);
-                    }
-                } else {
-                    console.log('No vehicle found for driver, skipping invoice generation');
-                }
-            } catch (invoiceError) {
-                console.error('Error generating invoice:', invoiceError);
-                // Don't fail the order completion if invoice generation fails
-            }
+            // Invoice generation removed - create manually via POST /api/invoice
             
             return res.json({ success: true, message: 'OTP verified succesfully', order });
         }else{
