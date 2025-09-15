@@ -48,7 +48,7 @@ exports.initiateBalancePayment = async (req, res) => {
         const userIdShort = userId.slice(-8); // Last 8 chars of user ID
         const randomSuffix = Math.random().toString(36).substring(2, 4); // Shorter random suffix
         const balanceRefId = `BAL${userIdShort}${originalAmountCents}${timestamp}${randomSuffix}`;
-        
+
         console.log('🆔 Generated balance order ID:', balanceRefId, 'Length:', balanceRefId.length);
 
         const defaultRedirectUrl = `${BASE_URL}/api/ccavenue/payment-response`;
@@ -172,10 +172,10 @@ exports.initiatePayment = async (req, res) => {
         console.log('Looking for userId:', userId);
         console.log('OrderId type:', typeof orderId);
         console.log('UserId type:', typeof userId);
-        
-        const order = await Order.findOne({ 
-            _id: orderId, 
-            userId: userId 
+
+        const order = await Order.findOne({
+            _id: orderId,
+            userId: userId
         }).populate([
             { path: 'userId', select: 'name mobile email' },
             { path: 'billingAddress' },
@@ -309,7 +309,7 @@ exports.initiatePayment = async (req, res) => {
         const ccavenueBaseUrl = process.env.NODE_ENV === 'production'
             ? 'https://secure.ccavenue.com'
             : 'https://test.ccavenue.com';
-        
+
         res.status(200).json({
             success: true,
             message: 'Payment request generated successfully',
@@ -358,7 +358,7 @@ exports.handlePaymentResponse = async (req, res) => {
         const decryptedResponse = ccavenueUtils.decrypt(encResp, workingKey);
         console.log('🔓 Decrypted CCAvenue response (raw):', decryptedResponse);
         console.log('🔓 Decrypted response length:', decryptedResponse.length);
-        
+
         const responseData = ccavenueUtils.parseResponse(decryptedResponse);
         console.log('📊 Parsed CCAvenue response data:', JSON.stringify(responseData, null, 2));
         console.log('📊 Response data keys:', Object.keys(responseData));
@@ -378,12 +378,12 @@ exports.handlePaymentResponse = async (req, res) => {
         console.log('🔍 CCAvenue Response Analysis:');
         console.log('📊 Available fields:', Object.keys(responseData));
         console.log('📊 Field values:', responseData);
-        
+
         // Check if this looks like a valid response regardless of validation
         const hasOrderId = !!responseData.order_id;
         const hasStatus = !!responseData.order_status;
         const hasAmount = !!responseData.amount;
-        
+
         console.log('🔍 Basic field check:', {
             hasOrderId,
             hasStatus,
@@ -391,13 +391,13 @@ exports.handlePaymentResponse = async (req, res) => {
             orderStatus: responseData.order_status,
             amount: responseData.amount
         });
-        
+
         // For balance payments, we'll be more lenient with validation
         if (!hasOrderId || !hasStatus) {
             console.error('❌ Critical fields missing - cannot process payment');
             return res.redirect('sreedifuels://payment-failed?reason=MissingCriticalFields');
         }
-        
+
         console.log('✅ Minimum required fields present, continuing...');
 
         console.log('✅ CCAvenue response validation passed');
@@ -418,14 +418,14 @@ exports.handlePaymentResponse = async (req, res) => {
             console.log('🆔 Order ID:', orderId);
             console.log('📊 Payment Status:', paymentStatus);
             console.log('📊 CCAvenue Response:', JSON.stringify(responseData, null, 2));
-            
+
             try {
                 // STEP 1: Extract user ID and amount from order ID
                 let balUserId = '687beafc57ca9d1650be6588'; // Default fallback
                 let originalAmount = 0;
-                
+
                 console.log('🔍 STEP 1: Parsing Order ID');
-                
+
                 if (orderId.includes('_')) {
                     // Old underscore format: BAL_userId_amount_timestamp_suffix
                     console.log('📝 Format: Old underscore format');
@@ -447,11 +447,11 @@ exports.handlePaymentResponse = async (req, res) => {
                         const userIdPart = orderIdWithoutBAL.substring(0, 8);
                         const timestampAndRandom = orderIdWithoutBAL.slice(-10);
                         const amountPart = orderIdWithoutBAL.substring(8, orderIdWithoutBAL.length - 10);
-                        
+
                         // For now, use the known user ID (in production, you'd have a mapping)
                         balUserId = '687beafc57ca9d1650be6588';
                         originalAmount = parseInt(amountPart) / 100;
-                        
+
                         console.log('🔍 Compact parsing:', {
                             userIdPart,
                             amountPart,
@@ -460,26 +460,34 @@ exports.handlePaymentResponse = async (req, res) => {
                         });
                     }
                 }
-                
+
+                // Use merchant amount (original amount) instead of total amount (which includes charges)
+                const merchantAmount = parseFloat(responseData.mer_amount || responseData.amount || '0');
+                if (merchantAmount > 0 && merchantAmount !== originalAmount) {
+                    console.log('🔄 Using merchant amount from CCAvenue instead of parsed amount');
+                    originalAmount = merchantAmount;
+                }
+
                 console.log('✅ STEP 1 Complete:', {
                     balUserId,
                     originalAmount,
-                    ccavenueAmount: parseFloat(responseData.amount || '0')
+                    ccavenueAmount: parseFloat(responseData.amount || '0'),
+                    merchantAmount: merchantAmount
                 });
-                
+
                 // STEP 2: Validate basic requirements
                 console.log('🔍 STEP 2: Validation');
-                
+
                 if (!balUserId || originalAmount <= 0) {
                     console.error('❌ Invalid order ID parsing:', { balUserId, originalAmount });
                     return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=InvalidOrderData`);
                 }
-                
+
                 // Check payment status - be more lenient
-                const isSuccessful = paymentStatus === 'completed' || 
-                                   responseData.order_status === 'Success' || 
-                                   responseData.order_status === 'Successful';
-                
+                const isSuccessful = paymentStatus === 'completed' ||
+                    responseData.order_status === 'Success' ||
+                    responseData.order_status === 'Successful';
+
                 if (!isSuccessful) {
                     console.log('❌ Payment not successful:', {
                         paymentStatus,
@@ -488,9 +496,9 @@ exports.handlePaymentResponse = async (req, res) => {
                     });
                     return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=${responseData.failure_message || responseData.order_status || 'PaymentFailed'}`);
                 }
-                
+
                 console.log('✅ STEP 2 Complete: Payment is successful');
-                
+
                 // STEP 3: Check user exists
                 console.log('🔍 STEP 3: User validation');
                 const User = require('../models/User.model.js');
@@ -500,33 +508,46 @@ exports.handlePaymentResponse = async (req, res) => {
                     return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=UserNotFound`);
                 }
                 console.log('✅ STEP 3 Complete: User found -', user.name);
-                
+
                 // STEP 4: Check for duplicate processing
                 console.log('🔍 STEP 4: Duplicate check');
                 const transactionId = responseData.transaction_id || responseData.tracking_id || `BAL_${Date.now()}`;
-                const existing = await LedgerEntry.findOne({ 
-                    userId: balUserId, 
-                    type: 'credit', 
-                    transactionId: transactionId 
+                const existing = await LedgerEntry.findOne({
+                    userId: balUserId,
+                    type: 'credit',
+                    transactionId: transactionId
                 });
-                
+
                 if (existing) {
                     console.log('⚠️ STEP 4: Already processed, redirecting to success');
                     return res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${transactionId}`);
                 }
                 console.log('✅ STEP 4 Complete: No duplicate found');
-                
+
                 // STEP 5: Create ledger entry with maximum error handling
                 console.log('🔍 STEP 5: Creating ledger entry');
-                
+
                 try {
                     const LedgerService = require('../services/ledger.service.js');
                     const mongoose = require('mongoose');
-                    
+
                     // Create a unique ObjectId for this balance payment
                     const balanceOrderObjectId = new mongoose.Types.ObjectId();
                     console.log('🆔 Generated unique ObjectId:', balanceOrderObjectId);
-                    
+
+                    console.log('📋 LedgerService.createPaymentEntry parameters:', {
+                        userId: balUserId,
+                        orderId: balanceOrderObjectId,
+                        amount: originalAmount,
+                        description: `Balance payment via CCAvenue - ₹${originalAmount}`,
+                        options: {
+                            paymentMethod: 'ccavenue',
+                            transactionId: transactionId,
+                            bankRefNo: responseData.bank_ref_no || 'N/A',
+                            trackingId: responseData.tracking_id || transactionId
+                        }
+                    });
+
                     const ledgerResult = await LedgerService.createPaymentEntry(
                         balUserId,
                         balanceOrderObjectId,
@@ -539,14 +560,14 @@ exports.handlePaymentResponse = async (req, res) => {
                             trackingId: responseData.tracking_id || transactionId
                         }
                     );
-                    
+
                     console.log('✅ STEP 5 Complete: Ledger entry created');
                     console.log('📊 Ledger Result:', {
                         entryId: ledgerResult.ledgerEntry._id,
                         amount: ledgerResult.ledgerEntry.amount,
                         newBalance: ledgerResult.userLedger.currentBalance
                     });
-                    
+
                 } catch (ledgerError) {
                     console.error('❌ STEP 5 FAILED: Ledger creation error');
                     console.error('❌ Ledger Error Details:', {
@@ -554,48 +575,83 @@ exports.handlePaymentResponse = async (req, res) => {
                         stack: ledgerError.stack,
                         name: ledgerError.name
                     });
-                    
+
                     // Try alternative approach - create entry manually
                     console.log('🔄 Attempting manual ledger entry creation...');
-                    
+
                     try {
+                        console.log('🔄 Creating manual ledger entry...');
                         const mongoose = require('mongoose');
-                        const UserLedger = require('../models/UserLedger.model.js');
-                        
-                        // Create ledger entry manually
-                        const balanceOrderObjectId = new mongoose.Types.ObjectId();
-                        
+
+                        // Create ledger entry manually with proper ObjectId
+                        const manualBalanceOrderObjectId = new mongoose.Types.ObjectId();
+                        console.log('🆔 Manual ObjectId created:', manualBalanceOrderObjectId);
+
+                        // Get current user ledger for balance calculation
+                        let userLedger = await UserLedger.findOne({ userId: balUserId });
+                        const balanceBefore = userLedger ? userLedger.currentBalance : 0;
+                        const balanceAfter = balanceBefore + originalAmount;
+
                         const ledgerEntry = new LedgerEntry({
                             userId: balUserId,
-                            orderId: balanceOrderObjectId,
+                            orderId: manualBalanceOrderObjectId, // Use the manual ObjectId
                             type: 'credit',
                             amount: originalAmount,
-                            balanceBefore: 0, // We'll update this
-                            balanceAfter: originalAmount, // We'll update this
-                            description: `Balance payment via CCAvenue - ₹${originalAmount}`,
+                            balanceBefore: balanceBefore,
+                            balanceAfter: balanceAfter,
+                            description: `Balance payment via CCAvenue - ₹${originalAmount} (Manual Entry)`,
                             paymentMethod: 'ccavenue',
                             paymentStatus: 'completed',
                             transactionId: transactionId,
                             bankRefNo: responseData.bank_ref_no || 'N/A',
                             trackingId: responseData.tracking_id || transactionId
                         });
-                        
+
+                        console.log('💾 Saving manual ledger entry:', {
+                            userId: balUserId,
+                            orderId: manualBalanceOrderObjectId,
+                            amount: originalAmount,
+                            balanceBefore,
+                            balanceAfter
+                        });
+
                         await ledgerEntry.save();
                         console.log('✅ Manual ledger entry created successfully');
-                        
+
+                        // Update user ledger manually
+                        if (!userLedger) {
+                            userLedger = new UserLedger({
+                                userId: balUserId,
+                                currentBalance: balanceAfter,
+                                totalPaid: originalAmount,
+                                totalOrders: 0,
+                                outstandingAmount: originalAmount
+                            });
+                        } else {
+                            userLedger.currentBalance = balanceAfter;
+                            userLedger.totalPaid += originalAmount;
+                            userLedger.outstandingAmount = userLedger.totalPaid - userLedger.totalOrders;
+                            userLedger.lastTransactionDate = new Date();
+                            userLedger.lastPaymentDate = new Date();
+                        }
+
+                        await userLedger.save();
+                        console.log('✅ User ledger updated manually');
+
                     } catch (manualError) {
                         console.error('❌ Manual ledger creation also failed:', manualError.message);
+                        console.error('❌ Manual error stack:', manualError.stack);
                         // Continue anyway - payment was successful
                     }
                 }
-                
+
                 // STEP 6: Success redirect
                 console.log('🎉 STEP 6: Success - redirecting');
                 console.log('🎯 =============== BALANCE PAYMENT SUCCESS ===============');
-                
+
                 const trackingId = responseData.tracking_id || transactionId;
                 return res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${trackingId}`);
-                
+
             } catch (balErr) {
                 console.error('💥 =============== BALANCE PAYMENT CRITICAL ERROR ===============');
                 console.error('❌ Error Message:', balErr.message);
@@ -604,7 +660,7 @@ exports.handlePaymentResponse = async (req, res) => {
                 console.error('❌ Order ID:', orderId);
                 console.error('❌ Response Data:', JSON.stringify(responseData, null, 2));
                 console.error('===============================================================');
-                
+
                 // Even if there's an error, if CCAvenue says success, redirect to success
                 const isSuccessful = responseData.order_status === 'Success' || responseData.order_status === 'Successful';
                 if (isSuccessful) {
@@ -612,132 +668,139 @@ exports.handlePaymentResponse = async (req, res) => {
                     const trackingId = responseData.tracking_id || responseData.transaction_id || 'ERROR_' + Date.now();
                     return res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${trackingId}&error=processing`);
                 }
-                
+
                 return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=ProcessingError&error=${encodeURIComponent(balErr.message)}`);
             }
         }
 
         // Update the order details in the database (normal order payments)
-        const order = await Order.findById(orderId);
-        if (order) {
-            const updateData = {
-                $set: {
-                    'paymentDetails.status': paymentStatus,
-                    'paymentDetails.transactionId': responseData.transaction_id || responseData.tracking_id,
-                    'paymentDetails.bankRefNo': responseData.bank_ref_no,
-                    'paymentDetails.trackingId': responseData.tracking_id,
-                    'paymentDetails.paymentMode': responseData.payment_mode,
-                    'paymentDetails.bankName': responseData.bank_name,
-                    'paymentDetails.ccavenueResponse': responseData
-                }
-            };
-
-            if (paymentStatus === 'completed') {
-                updateData.$set['paymentDetails.paidAt'] = new Date();
-                
-                console.log('=== Payment Completed Successfully ===');
-                console.log('Order ID:', orderId);
-                console.log('User ID:', order.userId);
-                console.log('Amount:', order.amount);
-                console.log('Payment Method:', 'ccavenue');
-                console.log('Transaction ID:', responseData.transaction_id || responseData.tracking_id);
-                console.log('Bank Ref No:', responseData.bank_ref_no);
-                console.log('Creating CREDIT entry for payment received');
-                
-                // ✅ NEW: Create CREDIT entry when payment is received
-                try {
-                    console.log('=== Creating CREDIT Entry for Payment Received ===');
-                    console.log('🔍 Payment Details:', {
-                        orderId,
-                        userId: order.userId,
-                        amount: order.amount,
-                        transactionId: responseData.transaction_id || responseData.tracking_id,
-                        bankRefNo: responseData.bank_ref_no,
-                        trackingId: responseData.tracking_id,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    const LedgerService = require('../services/ledger.service.js');
-                    
-                    // 🚨 CRITICAL: Check if CREDIT entry already exists to prevent duplicates
-                    const existingCreditEntry = await LedgerEntry.findOne({
-                        orderId: orderId,
-                        type: 'credit'
-                    });
-                    
-                    if (existingCreditEntry) {
-                        console.log('🚨 DUPLICATE CREDIT ENTRY DETECTED for order:', orderId);
-                        console.log('Existing entry:', { id: existingCreditEntry._id, amount: existingCreditEntry.amount });
-                        
-                        // 🚨 EMERGENCY: Delete duplicate and create correct one
-                        console.log('🗑️ Deleting duplicate CREDIT entry...');
-                        await LedgerEntry.deleteOne({ _id: existingCreditEntry._id });
-                        console.log('✅ Duplicate entry deleted');
+        // Skip this for balance payments as they don't have real orders
+        if (!String(orderId).startsWith('BAL')) {
+            const order = await Order.findById(orderId);
+            if (order) {
+                const updateData = {
+                    $set: {
+                        'paymentDetails.status': paymentStatus,
+                        'paymentDetails.transactionId': responseData.transaction_id || responseData.tracking_id,
+                        'paymentDetails.bankRefNo': responseData.bank_ref_no,
+                        'paymentDetails.trackingId': responseData.tracking_id,
+                        'paymentDetails.paymentMode': responseData.payment_mode,
+                        'paymentDetails.bankName': responseData.bank_name,
+                        'paymentDetails.ccavenueResponse': responseData
                     }
-                    
-                    const ledgerResult = await LedgerService.createPaymentEntry(
-                        order.userId,
-                        orderId,
-                        order.amount,
-                        `Payment received via CCAvenue - ${order.fuelQuantity}L fuel`,
-                        {
-                            paymentMethod: 'ccavenue',
+                };
+
+                if (paymentStatus === 'completed') {
+                    updateData.$set['paymentDetails.paidAt'] = new Date();
+
+                    console.log('=== Payment Completed Successfully ===');
+                    console.log('Order ID:', orderId);
+                    console.log('User ID:', order.userId);
+                    console.log('Amount:', order.amount);
+                    console.log('Payment Method:', 'ccavenue');
+                    console.log('Transaction ID:', responseData.transaction_id || responseData.tracking_id);
+                    console.log('Bank Ref No:', responseData.bank_ref_no);
+                    console.log('Creating CREDIT entry for payment received');
+
+                    // ✅ NEW: Create CREDIT entry when payment is received
+                    try {
+                        console.log('=== Creating CREDIT Entry for Payment Received ===');
+                        console.log('🔍 Payment Details:', {
+                            orderId,
+                            userId: order.userId,
+                            amount: order.amount,
                             transactionId: responseData.transaction_id || responseData.tracking_id,
                             bankRefNo: responseData.bank_ref_no,
-                            trackingId: responseData.tracking_id
-                        }
-                    );
-                    
-                    console.log('✅ CREDIT entry created successfully for payment:', ledgerResult);
-                    
-                    // ✅ CRITICAL: Store success in database for audit trail
-                    await Order.findByIdAndUpdate(orderId, {
-                        $set: {
-                            'paymentDetails.ledgerEntryCreated': true,
-                            'paymentDetails.ledgerEntryId': ledgerResult.ledgerEntry._id,
-                            'paymentDetails.ledgerCreatedAt': new Date()
-                        }
-                    });
-                    
-                } catch (ledgerError) {
-                    console.error('🚨 CRITICAL ERROR: Failed to create CREDIT entry for payment:', ledgerError);
-                    console.error('🚨 Payment Details for Manual Review:', {
-                        orderId,
-                        userId: order.userId,
-                        amount: order.amount,
-                        transactionId: responseData.transaction_id || responseData.tracking_id,
-                        bankRefNo: responseData.bank_ref_no,
-                        trackingId: responseData.tracking_id,
-                        error: ledgerError.message,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    // ✅ CRITICAL: Store failure in database for manual review
-                    await Order.findByIdAndUpdate(orderId, {
-                        $set: {
-                            'paymentDetails.ledgerEntryCreated': false,
-                            'paymentDetails.ledgerError': ledgerError.message,
-                            'paymentDetails.ledgerErrorAt': new Date(),
-                            'paymentDetails.requiresManualReview': true
-                        }
-                    });
-                    
-                    // Don't fail the payment if ledger fails, but log for manual intervention
-                }
-                
-            } else {
-                updateData.$set['paymentDetails.failureReason'] = responseData.failure_message || responseData.status_message;
-            }
-            await Order.findByIdAndUpdate(orderId, updateData);
-        }
+                            trackingId: responseData.tracking_id,
+                            timestamp: new Date().toISOString()
+                        });
 
-        // Redirect to the appropriate deep link
-        if (paymentStatus === 'completed') {
-            console.log(`Payment successful for order: ${orderId}`);
-            res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${responseData.tracking_id}`);
+                        const LedgerService = require('../services/ledger.service.js');
+
+                        // 🚨 CRITICAL: Check if CREDIT entry already exists to prevent duplicates
+                        const existingCreditEntry = await LedgerEntry.findOne({
+                            orderId: orderId,
+                            type: 'credit'
+                        });
+
+                        if (existingCreditEntry) {
+                            console.log('🚨 DUPLICATE CREDIT ENTRY DETECTED for order:', orderId);
+                            console.log('Existing entry:', { id: existingCreditEntry._id, amount: existingCreditEntry.amount });
+
+                            // 🚨 EMERGENCY: Delete duplicate and create correct one
+                            console.log('🗑️ Deleting duplicate CREDIT entry...');
+                            await LedgerEntry.deleteOne({ _id: existingCreditEntry._id });
+                            console.log('✅ Duplicate entry deleted');
+                        }
+
+                        const ledgerResult = await LedgerService.createPaymentEntry(
+                            order.userId,
+                            orderId,
+                            order.amount,
+                            `Payment received via CCAvenue - ${order.fuelQuantity}L fuel`,
+                            {
+                                paymentMethod: 'ccavenue',
+                                transactionId: responseData.transaction_id || responseData.tracking_id,
+                                bankRefNo: responseData.bank_ref_no,
+                                trackingId: responseData.tracking_id
+                            }
+                        );
+
+                        console.log('✅ CREDIT entry created successfully for payment:', ledgerResult);
+
+                        // ✅ CRITICAL: Store success in database for audit trail
+                        await Order.findByIdAndUpdate(orderId, {
+                            $set: {
+                                'paymentDetails.ledgerEntryCreated': true,
+                                'paymentDetails.ledgerEntryId': ledgerResult.ledgerEntry._id,
+                                'paymentDetails.ledgerCreatedAt': new Date()
+                            }
+                        });
+
+                    } catch (ledgerError) {
+                        console.error('🚨 CRITICAL ERROR: Failed to create CREDIT entry for payment:', ledgerError);
+                        console.error('🚨 Payment Details for Manual Review:', {
+                            orderId,
+                            userId: order.userId,
+                            amount: order.amount,
+                            transactionId: responseData.transaction_id || responseData.tracking_id,
+                            bankRefNo: responseData.bank_ref_no,
+                            trackingId: responseData.tracking_id,
+                            error: ledgerError.message,
+                            timestamp: new Date().toISOString()
+                        });
+
+                        // ✅ CRITICAL: Store failure in database for manual review
+                        await Order.findByIdAndUpdate(orderId, {
+                            $set: {
+                                'paymentDetails.ledgerEntryCreated': false,
+                                'paymentDetails.ledgerError': ledgerError.message,
+                                'paymentDetails.ledgerErrorAt': new Date(),
+                                'paymentDetails.requiresManualReview': true
+                            }
+                        });
+
+                        // Don't fail the payment if ledger fails, but log for manual intervention
+                    }
+
+                } else {
+                    updateData.$set['paymentDetails.failureReason'] = responseData.failure_message || responseData.status_message;
+                }
+                await Order.findByIdAndUpdate(orderId, updateData);
+
+                // Redirect to the appropriate deep link for regular orders
+                if (paymentStatus === 'completed') {
+                    console.log(`Payment successful for order: ${orderId}`);
+                    res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${responseData.tracking_id}`);
+                } else {
+                    console.log(`Payment failed for order: ${orderId}. Status: ${responseData.order_status}`);
+                    res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=${responseData.failure_message || responseData.order_status}`);
+                }
+            } // Close the if (order) block
         } else {
-            console.log(`Payment failed for order: ${orderId}. Status: ${responseData.order_status}`);
-            res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=${responseData.failure_message || responseData.order_status}`);
+            // This is a balance payment - already handled above
+            console.log('⚠️ Balance payment reached regular order processing - this should not happen');
+            res.redirect('sreedifuels://payment-failed?reason=UnexpectedFlow');
         }
 
     } catch (error) {
@@ -753,7 +816,7 @@ exports.handlePaymentResponse = async (req, res) => {
 exports.handlePaymentCancel = async (req, res) => {
     try {
         const { encResp } = req.body;
-        
+
         if (!encResp) {
             console.error('No encrypted response received for payment cancellation');
             return res.status(400).json({
@@ -768,7 +831,7 @@ exports.handlePaymentCancel = async (req, res) => {
         const responseData = ccavenueUtils.parseResponse(decryptedResponse);
 
         const orderId = responseData.order_id;
-        
+
         if (!orderId) {
             console.error('Order ID not found in cancellation response');
             return res.status(400).json({
