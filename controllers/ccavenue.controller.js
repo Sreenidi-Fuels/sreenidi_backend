@@ -40,9 +40,10 @@ exports.initiateBalancePayment = async (req, res) => {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
 
-        // Create balance reference order id (no real order)
+        // Create balance reference order id (no real order) - include original amount
         const timestamp = Math.floor(Date.now() / 1000);
-        const balanceRefId = `BAL_${userId}_${timestamp}`;
+        const originalAmount = parseFloat(amount).toFixed(2);
+        const balanceRefId = `BAL_${userId}_${originalAmount}_${timestamp}`;
 
         const defaultRedirectUrl = `${BASE_URL}/api/ccavenue/payment-response`;
         const defaultCancelUrl = `${BASE_URL}/api/ccavenue/payment-cancel`;
@@ -379,20 +380,29 @@ exports.handlePaymentResponse = async (req, res) => {
                 });
 
                 const parts = String(orderId).split('_');
-                if (parts.length < 2) {
+                if (parts.length < 4) {
                     console.error('❌ Invalid balance order ID format:', orderId);
                     return res.redirect('sreedifuels://payment-failed?reason=InvalidOrderFormat');
                 }
 
                 const balUserId = parts[1];
-                const paidAmount = parseFloat(responseData.amount || '0');
+                const originalAmount = parseFloat(parts[2]); // Extract original amount from order ID
+                const paidAmount = originalAmount; // Use original amount, not CCAvenue response amount
+
+                console.log('💡 Amount comparison:', {
+                    originalAmount: originalAmount,
+                    ccavenueAmount: parseFloat(responseData.amount || '0'),
+                    usingAmount: paidAmount
+                });
                 const transactionId = responseData.transaction_id || responseData.tracking_id;
                 const bankRefNo = responseData.bank_ref_no;
                 const trackingId = responseData.tracking_id;
 
                 console.log('💰 Balance payment details:', {
                     userId: balUserId,
-                    amount: paidAmount,
+                    originalAmount: originalAmount,
+                    ccavenueAmount: parseFloat(responseData.amount || '0'),
+                    ledgerAmount: paidAmount,
                     transactionId,
                     bankRefNo,
                     trackingId,
