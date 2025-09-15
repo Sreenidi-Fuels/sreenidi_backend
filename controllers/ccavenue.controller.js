@@ -6,6 +6,107 @@ const ccavenueUtils = require('../utils/ccavenue.js');
 const mongoose = require('mongoose');
 
 /**
+ * Initiate CCAvenue Balance Payment (no order)
+ * POST /api/ccavenue/initiate-balance-payment
+ */
+exports.initiateBalancePayment = async (req, res) => {
+    try {
+        const {
+            userId,
+            amount,
+            currency = 'INR',
+            redirectUrl,
+            cancelUrl
+        } = req.body;
+
+        if (!userId || !amount) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: userId, amount'
+            });
+        }
+
+        const { CCAVENUE_MERCHANT_ID, CCAVENUE_ACCESS_CODE, CCAVENUE_WORKING_KEY, BASE_URL } = process.env;
+        if (!CCAVENUE_MERCHANT_ID || !CCAVENUE_ACCESS_CODE || !CCAVENUE_WORKING_KEY) {
+            return res.status(500).json({
+                success: false,
+                error: 'Payment service configuration error'
+            });
+        }
+
+        // Validate user exists (optional hard check)
+        const user = await User.findById(userId).select('name mobile email');
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        // Create balance reference order id (no real order)
+        const timestamp = Math.floor(Date.now() / 1000);
+        const balanceRefId = `BAL_${userId}_${timestamp}`;
+
+        const defaultRedirectUrl = `${BASE_URL}/api/ccavenue/payment-response`;
+        const defaultCancelUrl = `${BASE_URL}/api/ccavenue/payment-cancel`;
+
+        const paymentData = {
+            orderId: balanceRefId,
+            amount: parseFloat(amount).toFixed(2),
+            currency,
+            redirectUrl: redirectUrl || defaultRedirectUrl,
+            cancelUrl: cancelUrl || defaultCancelUrl,
+            billingName: user.name || '',
+            billingAddress: '',
+            billingCity: '',
+            billingState: '',
+            billingZip: '',
+            billingCountry: 'India',
+            billingTel: user.mobile || '',
+            billingEmail: user.email || '',
+            deliveryName: user.name || '',
+            deliveryAddress: '',
+            deliveryCity: '',
+            deliveryState: '',
+            deliveryZip: '',
+            deliveryCountry: 'India',
+            deliveryTel: user.mobile || ''
+        };
+
+        const paymentRequest = ccavenueUtils.generatePaymentRequest(
+            paymentData,
+            CCAVENUE_MERCHANT_ID,
+            CCAVENUE_ACCESS_CODE
+        );
+
+        const ccavenueBaseUrl = process.env.NODE_ENV === 'production'
+            ? 'https://secure.ccavenue.com'
+            : 'https://test.ccavenue.com';
+
+        return res.status(200).json({
+            success: true,
+            message: 'Balance payment request generated successfully',
+            data: {
+                paymentUrl: `${ccavenueBaseUrl}/transaction/transaction.do?command=initiateTransaction`,
+                formData: {
+                    merchant_id: paymentRequest.merchant_id,
+                    access_code: paymentRequest.access_code,
+                    encRequest: paymentRequest.encRequest
+                },
+                orderId: balanceRefId,
+                amount: parseFloat(amount).toFixed(2),
+                currency
+            }
+        });
+
+    } catch (error) {
+        console.error('CCAvenue Balance Payment Initiation Error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Balance payment initiation failed',
+            message: error.message
+        });
+    }
+};
+
+/**
  * Initiate CCAvenue Payment
  * POST /api/ccavenue/initiate-payment
  */
@@ -246,7 +347,48 @@ exports.handlePaymentResponse = async (req, res) => {
 
         const paymentStatus = ccavenueUtils.mapPaymentStatus(responseData.order_status);
 
-        // Update the order details in the database
+        // Handle balance payments (no order) if order_id starts with BAL_
+        if (String(orderId).startsWith('BAL_')) {
+            try {
+                const parts = String(orderId).split('_');
+                const balUserId = parts[1];
+                const paidAmount = parseFloat(responseData.amount || '0');
+                const transactionId = responseData.transaction_id || responseData.tracking_id;
+                const bankRefNo = responseData.bank_ref_no;
+                const trackingId = responseData.tracking_id;
+
+                if (paymentStatus !== 'completed') {
+                    return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=${responseData.failure_message || responseData.order_status}`);
+                }
+
+                // Idempotency: skip if a credit with same transaction already exists
+                const existing = await LedgerEntry.findOne({ userId: balUserId, type: 'credit', transactionId });
+                if (!existing) {
+                    const LedgerService = require('../services/ledger.service.js');
+                    await LedgerService.createPaymentEntry(
+                        balUserId,
+                        null,
+                        paidAmount,
+                        'Balance payment via CCAvenue',
+                        {
+                            paymentMethod: 'ccavenue',
+                            transactionId,
+                            bankRefNo,
+                            trackingId
+                        }
+                    );
+                }
+
+                // Redirect using existing deep link convention
+                return res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${trackingId}`);
+
+            } catch (balErr) {
+                console.error('Balance payment processing error:', balErr);
+                return res.redirect('sreedifuels://payment-failed?reason=ProcessingError');
+            }
+        }
+
+        // Update the order details in the database (normal order payments)
         const order = await Order.findById(orderId);
         if (order) {
             const updateData = {

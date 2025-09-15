@@ -26,6 +26,15 @@ const validatePaymentRequest = (req, res, next) => {
             });
         }
     }
+    if (req.path === '/initiate-balance-payment') {
+        const { userId, amount } = req.body;
+        if (!userId || !amount) {
+            return res.status(400).json({ success: false, error: 'Missing required fields' });
+        }
+        if (isNaN(amount) || parseFloat(amount) <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid amount' });
+        }
+    }
     
     next();
 };
@@ -49,6 +58,14 @@ router.use(logPaymentOperation);
  * @body    { orderId, userId, amount, currency?, billingAddressId?, shippingAddressId?, redirectUrl?, cancelUrl? }
  */
 router.post('/initiate-payment', validatePaymentRequest, ccavenueController.initiatePayment);
+
+/**
+ * @route   POST /api/ccavenue/initiate-balance-payment
+ * @desc    Initiate CCAvenue payment to pay outstanding balance (no order)
+ * @access  Private
+ * @body    { userId, amount, currency?, redirectUrl?, cancelUrl? }
+ */
+router.post('/initiate-balance-payment', validatePaymentRequest, ccavenueController.initiateBalancePayment);
 
 /**
  * @route   POST /api/ccavenue/payment-response

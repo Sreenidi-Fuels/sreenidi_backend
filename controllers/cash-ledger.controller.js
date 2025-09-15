@@ -158,7 +158,7 @@ exports.listAll = async (req, res) => {
     ]);
     const totalCredit = totalsAgg[0]?.totalCredit || 0;
     const totalDebit = totalsAgg[0]?.totalDebit || 0;
-    const outstanding = totalDebit - totalCredit; // Positive means shortfall pending to reconcile
+    const outstanding = totalCredit - totalDebit; // Positive means excess credit collected
 
     res.status(200).json({
       success: true,
