@@ -41,9 +41,10 @@ exports.initiateBalancePayment = async (req, res) => {
         }
 
         // Create balance reference order id (no real order) - include original amount
-        const timestamp = Math.floor(Date.now() / 1000);
+        const timestamp = Date.now(); // Use milliseconds for better uniqueness
         const originalAmountCents = Math.round(parseFloat(amount) * 100); // Convert to cents to avoid decimal
-        const balanceRefId = `BAL_${userId}_${originalAmountCents}_${timestamp}`;
+        const randomSuffix = Math.random().toString(36).substring(2, 8); // Add random suffix for extra uniqueness
+        const balanceRefId = `BAL_${userId}_${originalAmountCents}_${timestamp}_${randomSuffix}`;
 
         const defaultRedirectUrl = `${BASE_URL}/api/ccavenue/payment-response`;
         const defaultCancelUrl = `${BASE_URL}/api/ccavenue/payment-cancel`;
@@ -394,10 +395,15 @@ exports.handlePaymentResponse = async (req, res) => {
                     amount: responseData.amount,
                     transaction_id: responseData.transaction_id,
                     tracking_id: responseData.tracking_id,
-                    bank_ref_no: responseData.bank_ref_no
+                    bank_ref_no: responseData.bank_ref_no,
+                    failure_message: responseData.failure_message,
+                    status_message: responseData.status_message,
+                    all_fields: Object.keys(responseData)
                 });
 
                 const parts = String(orderId).split('_');
+                console.log('🔍 Order ID parts:', parts);
+                
                 if (parts.length < 4) {
                     console.error('❌ Invalid balance order ID format:', orderId);
                     return res.redirect('sreedifuels://payment-failed?reason=InvalidOrderFormat');
@@ -423,6 +429,7 @@ exports.handlePaymentResponse = async (req, res) => {
                 }
 
                 console.log('💡 Amount comparison:', {
+                    orderIdParts: parts.length,
                     amountPart: amountPart,
                     originalAmount: originalAmount,
                     ccavenueAmount: parseFloat(responseData.amount || '0'),
@@ -478,9 +485,16 @@ exports.handlePaymentResponse = async (req, res) => {
 
                 console.log('💾 Creating ledger entry for balance payment...');
                 const LedgerService = require('../services/ledger.service.js');
+                
+                // Create a unique reference ID for balance payments (use the balance order ID)
+                const mongoose = require('mongoose');
+                const balanceOrderObjectId = new mongoose.Types.ObjectId();
+                
+                console.log('🆔 Created unique balance reference ID:', balanceOrderObjectId);
+                
                 const ledgerResult = await LedgerService.createPaymentEntry(
                     balUserId,
-                    null, // No order ID for balance payments
+                    balanceOrderObjectId, // Use unique ObjectId instead of null
                     paidAmount,
                     'Balance payment via CCAvenue',
                     {
