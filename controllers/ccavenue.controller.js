@@ -42,8 +42,8 @@ exports.initiateBalancePayment = async (req, res) => {
 
         // Create balance reference order id (no real order) - include original amount
         const timestamp = Math.floor(Date.now() / 1000);
-        const originalAmount = parseFloat(amount).toFixed(2);
-        const balanceRefId = `BAL_${userId}_${originalAmount}_${timestamp}`;
+        const originalAmountCents = Math.round(parseFloat(amount) * 100); // Convert to cents to avoid decimal
+        const balanceRefId = `BAL_${userId}_${originalAmountCents}_${timestamp}`;
 
         const defaultRedirectUrl = `${BASE_URL}/api/ccavenue/payment-response`;
         const defaultCancelUrl = `${BASE_URL}/api/ccavenue/payment-cancel`;
@@ -350,15 +350,33 @@ exports.handlePaymentResponse = async (req, res) => {
         }
 
         const decryptedResponse = ccavenueUtils.decrypt(encResp, workingKey);
+        console.log('🔓 Decrypted CCAvenue response:', decryptedResponse);
+        
         const responseData = ccavenueUtils.parseResponse(decryptedResponse);
+        console.log('📊 Parsed CCAvenue response data:', responseData);
 
         // IMPORTANT: Validate the response to ensure it is authentic
+        console.log('🔍 CCAvenue Response Validation:', {
+            responseData: responseData,
+            hasOrderId: !!responseData.order_id,
+            hasOrderStatus: !!responseData.order_status,
+            hasTrackingId: !!responseData.tracking_id,
+            hasBankRefNo: !!responseData.bank_ref_no,
+            hasAmount: !!responseData.amount
+        });
+
         if (!ccavenueUtils.validateResponse(responseData)) {
-            console.error('Invalid payment response structure or signature:', responseData);
-            return res.redirect('sreedifuels://payment-failed?reason=InvalidSignature');
+            console.error('❌ Invalid payment response structure or signature:', responseData);
+            console.error('❌ Missing fields detected in CCAvenue response');
+            console.error('❌ Available response fields:', Object.keys(responseData));
+            console.error('❌ Response values:', responseData);
+            return res.redirect(`sreedifuels://payment-failed?reason=ValidationFailed&fields=${Object.keys(responseData).join(',')}`);
         }
 
+        console.log('✅ CCAvenue response validation passed');
+
         const orderId = responseData.order_id;
+        console.log('🆔 Processing payment for order ID:', orderId);
         if (!orderId) {
             console.error('Order ID not found in CCAvenue response:', responseData);
             return res.redirect('sreedifuels://payment-failed?reason=InvalidOrderData');
@@ -386,13 +404,30 @@ exports.handlePaymentResponse = async (req, res) => {
                 }
 
                 const balUserId = parts[1];
-                const originalAmount = parseFloat(parts[2]); // Extract original amount from order ID
-                const paidAmount = originalAmount; // Use original amount, not CCAvenue response amount
+                let originalAmount;
+                let paidAmount;
+
+                // Handle both old (decimal) and new (cents) formats during transition
+                const amountPart = parts[2];
+                if (amountPart.includes('.')) {
+                    // Old format with decimal (e.g., "450.00")
+                    console.log('🔄 Processing old decimal format order ID');
+                    originalAmount = parseFloat(amountPart);
+                    paidAmount = originalAmount;
+                } else {
+                    // New format with cents (e.g., "45000")
+                    console.log('🔄 Processing new cents format order ID');
+                    const originalAmountCents = parseInt(amountPart);
+                    originalAmount = originalAmountCents / 100;
+                    paidAmount = originalAmount;
+                }
 
                 console.log('💡 Amount comparison:', {
+                    amountPart: amountPart,
                     originalAmount: originalAmount,
                     ccavenueAmount: parseFloat(responseData.amount || '0'),
-                    usingAmount: paidAmount
+                    usingAmount: paidAmount,
+                    format: amountPart.includes('.') ? 'decimal' : 'cents'
                 });
                 const transactionId = responseData.transaction_id || responseData.tracking_id;
                 const bankRefNo = responseData.bank_ref_no;

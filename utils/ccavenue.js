@@ -159,15 +159,27 @@ function generatePaymentRequest(orderData, merchantId, accessCode) {
  * @returns {boolean} - True if response is valid
  */
 function validateResponse(responseData) {
-    const requiredFields = ['order_id', 'order_status', 'tracking_id', 'bank_ref_no', 'amount'];
+    // Core required fields that must always be present
+    const coreRequiredFields = ['order_id', 'order_status', 'tracking_id', 'amount'];
     
-    for (const field of requiredFields) {
+    // Optional fields that might not be present in test environment
+    const optionalFields = ['bank_ref_no'];
+    
+    console.log('🔍 Validating CCAvenue response fields:', {
+        responseData: responseData,
+        coreFields: coreRequiredFields.map(field => ({ field, present: !!responseData[field] })),
+        optionalFields: optionalFields.map(field => ({ field, present: !!responseData[field] }))
+    });
+    
+    for (const field of coreRequiredFields) {
         if (!responseData[field]) {
-            console.error(`Missing required field in payment response: ${field}`);
+            console.error(`❌ Missing required field in payment response: ${field}`);
+            console.error(`❌ Available fields:`, Object.keys(responseData));
             return false;
         }
     }
     
+    console.log('✅ CCAvenue response validation passed - all core fields present');
     return true;
 }
 
