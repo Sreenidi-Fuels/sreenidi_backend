@@ -70,11 +70,29 @@ exports.initiateBalancePayment = async (req, res) => {
             deliveryTel: user.mobile || ''
         };
 
+        console.log('🔐 Generating balance payment request with data:', {
+            orderId: balanceRefId,
+            amount: parseFloat(amount).toFixed(2),
+            currency,
+            billingName: paymentData.billingName,
+            billingEmail: paymentData.billingEmail,
+            merchantId: CCAVENUE_MERCHANT_ID,
+            accessCodeLength: CCAVENUE_ACCESS_CODE.length,
+            workingKeyLength: CCAVENUE_WORKING_KEY.length
+        });
+
         const paymentRequest = ccavenueUtils.generatePaymentRequest(
             paymentData,
             CCAVENUE_MERCHANT_ID,
             CCAVENUE_ACCESS_CODE
         );
+
+        console.log('✅ Balance payment request generated successfully:', {
+            orderId: balanceRefId,
+            encRequestLength: paymentRequest.encRequest.length,
+            merchantId: paymentRequest.merchant_id,
+            accessCode: paymentRequest.access_code
+        });
 
         const ccavenueBaseUrl = process.env.NODE_ENV === 'production'
             ? 'https://secure.ccavenue.com'
@@ -350,41 +368,99 @@ exports.handlePaymentResponse = async (req, res) => {
         // Handle balance payments (no order) if order_id starts with BAL_
         if (String(orderId).startsWith('BAL_')) {
             try {
+                console.log('🔄 Processing balance payment for order:', orderId);
+                console.log('📊 CCAvenue response data:', {
+                    order_id: responseData.order_id,
+                    order_status: responseData.order_status,
+                    amount: responseData.amount,
+                    transaction_id: responseData.transaction_id,
+                    tracking_id: responseData.tracking_id,
+                    bank_ref_no: responseData.bank_ref_no
+                });
+
                 const parts = String(orderId).split('_');
+                if (parts.length < 2) {
+                    console.error('❌ Invalid balance order ID format:', orderId);
+                    return res.redirect('sreedifuels://payment-failed?reason=InvalidOrderFormat');
+                }
+
                 const balUserId = parts[1];
                 const paidAmount = parseFloat(responseData.amount || '0');
                 const transactionId = responseData.transaction_id || responseData.tracking_id;
                 const bankRefNo = responseData.bank_ref_no;
                 const trackingId = responseData.tracking_id;
 
+                console.log('💰 Balance payment details:', {
+                    userId: balUserId,
+                    amount: paidAmount,
+                    transactionId,
+                    bankRefNo,
+                    trackingId,
+                    paymentStatus
+                });
+
                 if (paymentStatus !== 'completed') {
+                    console.log('❌ Balance payment not completed, status:', paymentStatus);
                     return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=${responseData.failure_message || responseData.order_status}`);
                 }
 
-                // Idempotency: skip if a credit with same transaction already exists
-                const existing = await LedgerEntry.findOne({ userId: balUserId, type: 'credit', transactionId });
-                if (!existing) {
-                    const LedgerService = require('../services/ledger.service.js');
-                    await LedgerService.createPaymentEntry(
-                        balUserId,
-                        null,
-                        paidAmount,
-                        'Balance payment via CCAvenue',
-                        {
-                            paymentMethod: 'ccavenue',
-                            transactionId,
-                            bankRefNo,
-                            trackingId
-                        }
-                    );
+                if (paidAmount <= 0) {
+                    console.error('❌ Invalid payment amount:', paidAmount);
+                    return res.redirect('sreedifuels://payment-failed?reason=InvalidAmount');
                 }
+
+                // Validate user exists
+                const User = require('../models/User.model.js');
+                const user = await User.findById(balUserId);
+                if (!user) {
+                    console.error('❌ User not found for balance payment:', balUserId);
+                    return res.redirect('sreedifuels://payment-failed?reason=UserNotFound');
+                }
+
+                console.log('✅ User found for balance payment:', user.name, user.mobile);
+
+                // Idempotency: skip if a credit with same transaction already exists
+                const existing = await LedgerEntry.findOne({ 
+                    userId: balUserId, 
+                    type: 'credit', 
+                    transactionId: transactionId 
+                });
+
+                if (existing) {
+                    console.log('⚠️ Balance payment already processed, transaction exists:', transactionId);
+                    return res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${trackingId}`);
+                }
+
+                console.log('💾 Creating ledger entry for balance payment...');
+                const LedgerService = require('../services/ledger.service.js');
+                const ledgerResult = await LedgerService.createPaymentEntry(
+                    balUserId,
+                    null, // No order ID for balance payments
+                    paidAmount,
+                    'Balance payment via CCAvenue',
+                    {
+                        paymentMethod: 'ccavenue',
+                        transactionId,
+                        bankRefNo,
+                        trackingId
+                    }
+                );
+
+                console.log('✅ Balance payment ledger entry created successfully:', ledgerResult.ledgerEntry._id);
 
                 // Redirect using existing deep link convention
                 return res.redirect(`sreedifuels://payment-success?order_id=${orderId}&tracking_id=${trackingId}`);
 
             } catch (balErr) {
-                console.error('Balance payment processing error:', balErr);
-                return res.redirect('sreedifuels://payment-failed?reason=ProcessingError');
+                console.error('❌ Balance payment processing error:', balErr);
+                console.error('❌ Error stack:', balErr.stack);
+                console.error('❌ Error details:', {
+                    message: balErr.message,
+                    name: balErr.name,
+                    orderId,
+                    responseData: JSON.stringify(responseData, null, 2)
+                });
+                return res.redirect(`sreedifuels://payment-failed?reason=ProcessingError&error=${encodeURIComponent(balErr.message)}`);
             }
         }
 

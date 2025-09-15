@@ -9,7 +9,7 @@ const LedgerEntrySchema = new mongoose.Schema({
     orderId: { 
         type: mongoose.Schema.Types.ObjectId, 
         ref: "Order", 
-        required: true 
+        required: false  // Allow null for balance payments
     },
     invoiceId: { 
         type: mongoose.Schema.Types.ObjectId, 
