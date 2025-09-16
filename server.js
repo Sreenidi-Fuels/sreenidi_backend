@@ -25,6 +25,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(morgan(':method :url :status length-:res[content-length]  time-:response-time ms'));
 
+// Serve static files from public directory
+app.use(express.static('public'));
+
 // --- Define Routes Later ---
 // app.use('/api/auth', require('./routes/auth.route'));
 app.use('/api/users', require('./routes/user.route'));
@@ -51,7 +54,7 @@ const PORT = process.env.PORT || 3000;
 // Listen on both localhost and network IP
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Server accessible on your network at http://192.168.0.103:${PORT}`);
-  console.log(`Flutter app should use: 192.168.0.103:${PORT}`);
-  console.log(`Postman can use: http://localhost:${PORT} or 192.168.0.103:${PORT}`);
+  console.log(`Server accessible on your network at http://192.168.0.111:${PORT}`);
+  console.log(`Flutter app should use: 192.168.0.111:${PORT}`);
+  console.log(`Postman can use: http://localhost:${PORT} or 192.168.0.111:${PORT}`);
 });

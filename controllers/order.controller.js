@@ -878,7 +878,16 @@ exports.getOrderDeliveryImage = async (req, res) => {
         if (!order || !order.deliveryImage || !order.deliveryImage.data) {
             return res.status(404).json({ error: 'Image not found for this order' });
         }
-        res.set('Content-Type', order.deliveryImage.contentType);
+        
+        // Set proper headers for image serving
+        res.set({
+            'Content-Type': order.deliveryImage.contentType,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Cache-Control': 'no-cache'
+        });
+        
         res.send(order.deliveryImage.data);
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -4,6 +4,9 @@ const {
     upload, 
     uploadImage, 
     getAdminImage, 
+    getAdminImagesMetadata,
+    getAdminImagesForCarousel,
+    getAllAdminImages,
     createAdmin, 
     getAllAdmins, 
     getAdminById, 
@@ -27,7 +30,11 @@ router.delete('/:id', deleteAdmin);
 
 // Image routes
 router.post('/:id/upload-image', upload.single('image'), uploadImage);
-router.get('/:id/image', getAdminImage);
-router.delete('/:id/image', deleteImage);
+router.post('/:id/upload-images', upload.array('images', 5), uploadImage); // Support up to 5 images
+router.get('/:id/image', getAdminImage); // Get single image (latest or by index)
+router.get('/:id/images', getAllAdminImages); // Get all images in gallery view
+router.get('/:id/images-carousel', getAdminImagesForCarousel); // Get images for carousel (JSON)
+router.get('/:id/images-metadata', getAdminImagesMetadata); // Get all images metadata
+router.delete('/:id/image', deleteImage); // Delete single image by index or all images
 
 module.exports = router;
