@@ -41,13 +41,12 @@ exports.initiateBalancePayment = async (req, res) => {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
 
-        // Create balance reference order id (no real order) - include original amount
-        // Keep it shorter for CCAvenue compatibility (max 30 chars recommended)
+        // Create balance reference order id (no real order) - use underscore format for reliability
+        // Format: BAL_userId_amount_timestamp_suffix
         const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
         const originalAmountCents = Math.round(parseFloat(amount) * 100); // Convert to cents to avoid decimal
-        const userIdShort = userId.slice(-8); // Last 8 chars of user ID
         const randomSuffix = Math.random().toString(36).substring(2, 4); // Shorter random suffix
-        const balanceRefId = `BAL${userIdShort}${originalAmountCents}${timestamp}${randomSuffix}`;
+        const balanceRefId = `BAL_${userId}_${originalAmountCents}_${timestamp}_${randomSuffix}`;
 
         console.log('🆔 Generated balance order ID:', balanceRefId, 'Length:', balanceRefId.length);
 
@@ -421,14 +420,14 @@ exports.handlePaymentResponse = async (req, res) => {
 
             try {
                 // STEP 1: Extract user ID and amount from order ID
-                let balUserId = '687beafc57ca9d1650be6588'; // Default fallback
+                let balUserId = null;
                 let originalAmount = 0;
 
                 console.log('🔍 STEP 1: Parsing Order ID');
 
                 if (orderId.includes('_')) {
-                    // Old underscore format: BAL_userId_amount_timestamp_suffix
-                    console.log('📝 Format: Old underscore format');
+                    // Underscore format: BAL_userId_amount_timestamp_suffix
+                    console.log('📝 Format: Underscore format');
                     const parts = String(orderId).split('_');
                     if (parts.length >= 3) {
                         balUserId = parts[1];
@@ -438,27 +437,17 @@ exports.handlePaymentResponse = async (req, res) => {
                         } else {
                             originalAmount = parseInt(amountPart) / 100;
                         }
-                    }
-                } else {
-                    // New compact format: BALuserIdamounttimestampsuffix
-                    console.log('📝 Format: New compact format');
-                    if (orderId.length >= 20) {
-                        const orderIdWithoutBAL = orderId.substring(3);
-                        const userIdPart = orderIdWithoutBAL.substring(0, 8);
-                        const timestampAndRandom = orderIdWithoutBAL.slice(-10);
-                        const amountPart = orderIdWithoutBAL.substring(8, orderIdWithoutBAL.length - 10);
-
-                        // For now, use the known user ID (in production, you'd have a mapping)
-                        balUserId = '687beafc57ca9d1650be6588';
-                        originalAmount = parseInt(amountPart) / 100;
-
-                        console.log('🔍 Compact parsing:', {
-                            userIdPart,
+                        console.log('🔍 Underscore parsing:', {
+                            userId: balUserId,
                             amountPart,
-                            timestampAndRandom,
                             extractedAmount: originalAmount
                         });
                     }
+                } else {
+                    // Legacy compact format: BALuserIdamounttimestampsuffix
+                    console.log('📝 Format: Legacy compact format');
+                    console.error('❌ Cannot parse legacy compact format without user mapping');
+                    return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=InvalidOrderFormat`);
                 }
 
                 // Use merchant amount (original amount) instead of total amount (which includes charges)
@@ -481,6 +470,13 @@ exports.handlePaymentResponse = async (req, res) => {
                 if (!balUserId || originalAmount <= 0) {
                     console.error('❌ Invalid order ID parsing:', { balUserId, originalAmount });
                     return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=InvalidOrderData`);
+                }
+
+                // Validate that balUserId is a valid MongoDB ObjectId
+                const mongoose = require('mongoose');
+                if (!mongoose.Types.ObjectId.isValid(balUserId)) {
+                    console.error('❌ Invalid user ID format:', balUserId);
+                    return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=InvalidUserIdFormat`);
                 }
 
                 // Check payment status - be more lenient
