@@ -45,6 +45,7 @@ async function ordersWithPricing(orderDocs) {
 
 // Update population logic to include driver details and vehicle details
 const populateOptions = [
+    { path: 'userId', select: 'name email mobile role' },
     { path: 'shippingAddress' },
     { path: 'billingAddress' },
     { path: 'asset' },
@@ -209,7 +210,7 @@ exports.createDriverCreditOrder = async (req, res) => {
 exports.createOrder = async (req, res) => {
     try {
         const { userId, amount, paymentType } = req.body;
-        
+
         // 🚨 CRITICAL: Validate credit limit for credit orders
         if (paymentType === 'credit') {
             console.log('=== Credit Order Validation ===');
@@ -217,32 +218,32 @@ exports.createOrder = async (req, res) => {
             console.log('Order Amount:', amount);
             console.log('Total Amount:', req.body.totalAmount);
             console.log('Payment Type:', paymentType);
-            
+
             // Get user credit information
             const User = require('../models/User.model.js');
             const UserLedger = require('../models/UserLedger.model.js');
-            
+
             const user = await User.findById(userId);
             if (!user) {
                 return res.status(404).json({ error: 'User not found' });
             }
-            
+
             // Check if user is eligible for credit
             if (user.role !== 'credited') {
-                return res.status(400).json({ 
+                return res.status(400).json({
                     error: 'User is not eligible for credit orders',
-                    userRole: user.role 
+                    userRole: user.role
                 });
             }
-            
+
             // Check if user has a credit limit set
             if (!user.creditLimit || user.creditLimit <= 0) {
-                return res.status(400).json({ 
+                return res.status(400).json({
                     error: 'User does not have a valid credit limit set',
-                    creditLimit: user.creditLimit 
+                    creditLimit: user.creditLimit
                 });
             }
-            
+
             // Get user's credit limit and usage (ACTIVE credit orders: pending, dispatched, completed)
             const creditLimit = user.creditLimit;
             // Use credit orders that still consume limit until repaid (pending/dispatched/completed)
@@ -257,12 +258,12 @@ exports.createOrder = async (req, res) => {
                 return sum + (Number(orderAmount) || 0);
             }, 0);
             const amountOfCreditAvailable = Math.max(0, creditLimit - creditLimitUsed);
-            
+
             // Use totalAmount for validation if provided, otherwise use amount; coerce to Number
             const validationAmount = Number(
                 (req.body.totalAmount ?? amount)
             );
-            
+
             console.log('Credit Validation Details:');
             console.log('Credit Limit:', creditLimit);
             // Outstanding is independent; not used for limit
@@ -272,12 +273,12 @@ exports.createOrder = async (req, res) => {
             console.log('Amount of Credit Available:', amountOfCreditAvailable);
             console.log('Requested Order Amount (for validation):', validationAmount);
             console.log('Using totalAmount for validation:', req.body.totalAmount !== null && req.body.totalAmount !== undefined);
-            
+
             // Validate amount
             if (!Number.isFinite(Number(validationAmount)) || Number(validationAmount) <= 0) {
                 return res.status(400).json({ error: 'Invalid order amount' });
             }
-            
+
             // Check if order amount exceeds available credit
             if (amountOfCreditAvailable <= 0 || validationAmount > amountOfCreditAvailable) {
                 return res.status(400).json({
@@ -292,11 +293,11 @@ exports.createOrder = async (req, res) => {
                     }
                 });
             }
-            
+
             console.log('✅ Credit validation passed');
             console.log('Remaining credit after order:', amountOfCreditAvailable - validationAmount);
         }
-        
+
         // For credit orders, use totalAmount as the order amount
         const orderData = {
             ...req.body,
@@ -305,12 +306,12 @@ exports.createOrder = async (req, res) => {
         const order = new Order(orderData);
         await order.save();
         await order.populate(populateOptions);
-        
+
         // ✅ REMOVED: No ledger entry created on order creation
         // Ledger entries are now created when:
         // 1. Payment is received (CREDIT entry - totalPaid increases)
         // 2. Fuel is delivered (DEBIT entry - totalOrders increases)
-        
+
         console.log('=== Order Created Successfully ===');
         console.log('Order ID:', order._id);
         console.log('User ID:', order.userId);
@@ -318,7 +319,7 @@ exports.createOrder = async (req, res) => {
         console.log('Fuel Quantity:', order.fuelQuantity);
         console.log('Note: CREDIT entry will be created when payment is received');
         console.log('Note: DEBIT entry will be created when fuel is delivered (invoice confirmed)');
-        
+
         res.status(201).json(await orderWithPricing(order));
     } catch (err) {
         console.error('Order creation failed:', err);
@@ -348,39 +349,39 @@ exports.createDirectCashOrder = async (req, res) => {
 exports.createDirectCreditOrder = async (req, res) => {
     try {
         const { userId, amount } = req.body;
-        
+
         // 🚨 CRITICAL: Validate credit limit before creating order
         console.log('=== Credit Order Validation ===');
         console.log('User ID:', userId);
         console.log('Order Amount:', amount);
         console.log('Total Amount:', req.body.totalAmount);
         console.log('Payment Type: credit');
-        
+
         // Get user credit information
         const User = require('../models/User.model.js');
         const UserLedger = require('../models/UserLedger.model.js');
-        
+
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
-        
+
         // Check if user is eligible for credit
         if (user.role !== 'credited') {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'User is not eligible for credit orders',
-                userRole: user.role 
+                userRole: user.role
             });
         }
-        
+
         // Check if user has a credit limit set
         if (!user.creditLimit || user.creditLimit <= 0) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'User does not have a valid credit limit set',
-                creditLimit: user.creditLimit 
+                creditLimit: user.creditLimit
             });
         }
-        
+
         // Get user's credit limit and usage (ACTIVE credit orders: pending, dispatched, completed)
         const creditLimit = user.creditLimit;
         // Use credit orders that still consume limit until repaid (pending/dispatched/completed)
@@ -410,7 +411,7 @@ exports.createDirectCreditOrder = async (req, res) => {
         console.log('Amount of Credit Available:', amountOfCreditAvailable);
         console.log('Requested Order Amount (for validation):', validationAmount);
         console.log('Using totalAmount for validation:', req.body.totalAmount !== null && req.body.totalAmount !== undefined);
-        
+
         // Validate amount and available credit
         if (!Number.isFinite(validationAmount) || validationAmount <= 0) {
             return res.status(400).json({ error: 'Invalid order amount' });
@@ -429,10 +430,10 @@ exports.createDirectCreditOrder = async (req, res) => {
                 }
             });
         }
-        
+
         console.log('✅ Credit validation passed');
         console.log('Remaining credit after order:', amountOfCreditAvailable - validationAmount);
-        
+
         const orderData = {
             ...req.body,
             orderType: 'direct',
@@ -448,7 +449,7 @@ exports.createDirectCreditOrder = async (req, res) => {
         // ℹ️ No DEBIT entry here for credit orders.
         // DEBIT entry will be created when the invoice is updated to status 'finalised',
         // using the invoice total amount (same as ccavenue flow).
-        
+
         res.status(201).json(await orderWithPricing(order));
     } catch (err) {
         console.error('Direct credit order creation failed:', err);
@@ -460,6 +461,7 @@ exports.createDirectCreditOrder = async (req, res) => {
 exports.getOrders = async (req, res) => {
     try {
         const orders = await Order.find()
+            .populate('userId', 'name email mobile role')
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset')
@@ -474,6 +476,7 @@ exports.getOrders = async (req, res) => {
 exports.getOrderById = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id)
+            .populate('userId', 'name email mobile role')
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset')
@@ -491,6 +494,7 @@ exports.getOrdersByUserId = async (req, res) => {
         const userId = req.params.userId;
         if (!userId) return res.status(400).json({ error: 'User ID is required' });
         const orders = await Order.find({ userId: userId })
+            .populate('userId', 'name email mobile role')
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset')
@@ -508,6 +512,7 @@ exports.getLastOrderByUserId = async (req, res) => {
         if (!userId) return res.status(400).json({ error: 'User ID is required' });
         const lastOrder = await Order.findOne({ userId: userId })
             .sort({ createdAt: -1 })
+            .populate('userId', 'name email mobile role')
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset')
@@ -541,6 +546,7 @@ exports.getCompletedOrdersByUserId = async (req, res) => {
         const userId = req.params.userId;
         if (!userId) return res.status(400).json({ error: 'User ID is required' });
         const orders = await Order.find({ userId: userId, 'tracking.dispatch.status': 'completed' })
+            .populate('userId', 'name email mobile role')
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset')
@@ -576,9 +582,9 @@ exports.getOngoingOrdersByUserId = async (req, res) => {
             userId: userId,
             'tracking.dispatch.status': { $ne: 'completed' }
         })
-        .populate('shippingAddress')
-        .populate('billingAddress')
-        .populate('asset');
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset');
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -598,6 +604,7 @@ exports.updateOrder = async (req, res) => {
 
         // Proceed with update if allowed
         const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+            .populate('userId', 'name email mobile role')
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset')
@@ -686,8 +693,8 @@ exports.updateDispatchStatus = async (req, res) => {
         if (!status || !['pending', 'dispatched'].includes(status)) {
             return res.status(400).json({ error: 'Invalid or missing dispatch status' });
         }
-        if(!order.tracking.driverAssignment.driverId){
-             return res.status(400).json({ error: 'Cannot start dispatch as driver is not assigned!' });
+        if (!order.tracking.driverAssignment.driverId) {
+            return res.status(400).json({ error: 'Cannot start dispatch as driver is not assigned!' });
         }
 
         order.tracking.dispatch.status = status;
@@ -722,25 +729,25 @@ exports.validateStartDispenseOtp = async (req, res) => {
 
 //validate stopDispenseOtp for an order
 exports.validateStopDispenseOtp = async (req, res) => {
-    try{
+    try {
         const order = await Order.findById(req.params.id);
-        if(!order) return res.status(404).json({ error: 'Order not found!'});
+        if (!order) return res.status(404).json({ error: 'Order not found!' });
 
         const { otp } = req.body;
-        if(!otp) return res.status(400).json({ error: 'OTP is required'});
+        if (!otp) return res.status(400).json({ error: 'OTP is required' });
 
-        if(order.tracking.fuelDispense.startVerified === true && order.tracking.fuelDispense.stopDispenseOtp === Number(otp)){
+        if (order.tracking.fuelDispense.startVerified === true && order.tracking.fuelDispense.stopDispenseOtp === Number(otp)) {
             order.tracking.fuelDispense.stopVerified = true;
             order.tracking.dispatch.status = 'completed'
             await order.save();
-            
+
             // Invoice generation removed - create manually via POST /api/invoice
-            
+
             return res.json({ success: true, message: 'OTP verified succesfully', order });
-        }else{
+        } else {
             return res.status(400).json({ success: false, error: 'Invalid OTP' });
         }
-    }catch( err ){
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
@@ -754,11 +761,11 @@ exports.repeatCompletedOrder = async (req, res) => {
             userId: userId,
             'tracking.dispatch.status': 'completed'
         })
-        .sort({ createdAt: -1 })
-        .populate('shippingAddress')
-        .populate('billingAddress')
-        .populate('asset')
-        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
+            .sort({ createdAt: -1 })
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         if (!lastCompletedOrder) {
             return res.status(404).json({ error: 'No completed order found for this user' });
         }
@@ -806,10 +813,11 @@ exports.getAllCompletedOrders = async (req, res) => {
                 { 'tracking.orderConfirmation.status': 'rejected' }
             ]
         })
-        .populate('shippingAddress')
-        .populate('billingAddress')
-        .populate('asset')
-        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
+            .populate('userId', 'name email mobile role')
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -878,7 +886,7 @@ exports.getOrderDeliveryImage = async (req, res) => {
         if (!order || !order.deliveryImage || !order.deliveryImage.data) {
             return res.status(404).json({ error: 'Image not found for this order' });
         }
-        
+
         // Set proper headers for image serving
         res.set({
             'Content-Type': order.deliveryImage.contentType,
@@ -887,7 +895,7 @@ exports.getOrderDeliveryImage = async (req, res) => {
             'Access-Control-Allow-Headers': 'Content-Type',
             'Cache-Control': 'no-cache'
         });
-        
+
         res.send(order.deliveryImage.data);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -950,10 +958,11 @@ exports.getAllCurrentAssignedOrders = async (req, res) => {
             'tracking.driverAssignment.driverId': { $ne: null },
             'tracking.dispatch.status': { $ne: 'completed' }
         })
-        .populate('shippingAddress')
-        .populate('billingAddress')
-        .populate('asset')
-        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
+            .populate('userId', 'name email mobile role')
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -969,10 +978,11 @@ exports.getAllUserAcceptanceOrders = async (req, res) => {
                 { 'tracking.driverAssignment.driverId': null }
             ]
         })
-        .populate('shippingAddress')
-        .populate('billingAddress')
-        .populate('asset')
-        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
+            .populate('userId', 'name email mobile role')
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -988,10 +998,11 @@ exports.getAllDriverOngoingOrders = async (req, res) => {
             'tracking.driverAssignment.driverId': driverId,
             'tracking.dispatch.status': { $in: ['pending', 'dispatched'] }
         })
-        .populate('shippingAddress')
-        .populate('billingAddress')
-        .populate('asset')
-        .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
+            .populate('userId', 'name email mobile role')
+            .populate('shippingAddress')
+            .populate('billingAddress')
+            .populate('asset')
+            .populate({ path: 'tracking.driverAssignment.driverId', populate: { path: 'vehicleDetails' }, select: 'name mobile vehicleDetails' });
         res.json(orders);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1016,6 +1027,7 @@ exports.getCompletedOrdersForAllDrivers = async (req, res) => {
 exports.getAllCompletedOrdersByDrivers = async (req, res) => {
     try {
         const orders = await Order.find({ 'tracking.dispatch.status': 'completed' })
+            .populate('userId', 'name email mobile role')
             .populate('shippingAddress')
             .populate('billingAddress')
             .populate('asset')

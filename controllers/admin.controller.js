@@ -17,7 +17,7 @@ const loginAdmin = async (req, res) => {
 
         // Find admin by phone number
         const admin = await Admin.findOne({ phone });
-        
+
         // Check if admin exists
         if (!admin) {
             return res.status(404).json({ error: 'Admin not found' });
@@ -29,7 +29,7 @@ const loginAdmin = async (req, res) => {
         }
 
         // Login successful
-        res.status(200).json({ 
+        res.status(200).json({
             message: 'Login successful',
             admin: {
                 id: admin._id,
@@ -142,19 +142,19 @@ const updateAdmin = async (req, res) => {
             try {
                 const User = require('../models/User.model.js');
                 const Driver = require('../models/Driver.model.js');
-                
+
                 // Update all users with role 'normal' to use the new dailyRate
                 await User.updateMany(
                     { role: 'normal' },
                     { $unset: { creditFuelRate: 1 } } // Remove creditFuelRate for normal users
                 );
-                
+
                 // Update all drivers to use the new dailyRate
                 await Driver.updateMany(
                     {},
                     { $unset: { creditFuelRate: 1 } } // Remove creditFuelRate for drivers
                 );
-                
+
                 console.log(`✅ Daily rate updated to ${req.body.dailyRate} for all normal users and drivers`);
             } catch (propagationError) {
                 console.error('Error propagating daily rate:', propagationError);
@@ -179,7 +179,7 @@ const updateAdmin = async (req, res) => {
 const setAdminPassword = async (req, res) => {
     try {
         const { newPassword } = req.body;
-        
+
         if (!newPassword) {
             return res.status(400).json({ error: 'New password is required' });
         }
@@ -228,7 +228,7 @@ const uploadImage = async (req, res) => {
     try {
         // Handle both single file (req.file) and multiple files (req.files)
         const files = req.files || (req.file ? [req.file] : []);
-        
+
         if (files.length === 0) {
             return res.status(400).json({ message: 'No image file(s) provided' });
         }
@@ -241,9 +241,9 @@ const uploadImage = async (req, res) => {
         // Check current image count and enforce 5-image limit
         const currentImageCount = admin.images ? admin.images.length : 0;
         const maxImages = 5;
-        
+
         if (currentImageCount >= maxImages) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: `Maximum ${maxImages} images allowed. Please delete some images first.`,
                 currentImages: currentImageCount,
                 maxImages: maxImages
@@ -254,7 +254,7 @@ const uploadImage = async (req, res) => {
         const newImageCount = currentImageCount + files.length;
         if (newImageCount > maxImages) {
             const allowedFiles = maxImages - currentImageCount;
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: `Cannot upload ${files.length} images. Only ${allowedFiles} more image(s) allowed (current: ${currentImageCount}/${maxImages})`,
                 currentImages: currentImageCount,
                 maxImages: maxImages,
@@ -272,12 +272,12 @@ const uploadImage = async (req, res) => {
         });
 
         await admin.save();
-        
-        const message = files.length === 1 
-            ? 'Image uploaded successfully' 
+
+        const message = files.length === 1
+            ? 'Image uploaded successfully'
             : `${files.length} images uploaded successfully`;
-            
-        res.json({ 
+
+        res.json({
             message,
             uploadedCount: files.length,
             totalImages: admin.images.length,
@@ -298,13 +298,13 @@ const getAdminImage = async (req, res) => {
 
         // Get image by index (query parameter) or latest image by default
         const imageIndex = req.query.index ? parseInt(req.query.index) : admin.images.length - 1;
-        
+
         if (imageIndex < 0 || imageIndex >= admin.images.length) {
             return res.status(404).json({ message: 'Image index out of range' });
         }
 
         const image = admin.images[imageIndex];
-        
+
         // Set proper headers for image serving
         res.set({
             'Content-Type': image.contentType,
@@ -313,7 +313,7 @@ const getAdminImage = async (req, res) => {
             'Access-Control-Allow-Headers': 'Content-Type',
             'Cache-Control': 'no-cache'
         });
-        
+
         res.send(image.data);
     } catch (error) {
         res.status(500).json({ message: 'Error fetching image', error: error.message });
@@ -370,10 +370,10 @@ const getAdminImagesForCarousel = async (req, res) => {
             images: images
         });
     } catch (error) {
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            message: 'Error fetching images for carousel', 
-            error: error.message 
+            message: 'Error fetching images for carousel',
+            error: error.message
         });
     }
 };
@@ -469,7 +469,7 @@ const getAllAdminImages = async (req, res) => {
             const base64Image = `data:${image.contentType};base64,${image.data.toString('base64')}`;
             const uploadDate = image.uploadedAt ? new Date(image.uploadedAt).toLocaleString() : 'Unknown';
             const sizeKB = Math.round(image.data.length / 1024);
-            
+
             html += `
                 <div class="image-card">
                     <img src="${base64Image}" alt="Admin Image ${index + 1}">
@@ -525,7 +525,7 @@ const deleteImage = async (req, res) => {
         }
 
         const imageIndex = req.query.index ? parseInt(req.query.index) : null;
-        
+
         if (imageIndex !== null) {
             // Delete specific image by index
             if (imageIndex < 0 || imageIndex >= admin.images.length) {
@@ -553,8 +553,8 @@ const getDailyRate = async (req, res) => {
         if (!admin) {
             return res.status(404).json({ error: 'Admin data not found' });
         }
-        
-        res.json({ 
+
+        res.json({
             dailyRate: admin.dailyRate,
             lastUpdated: admin.updatedAt,
             adminId: admin._id

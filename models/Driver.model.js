@@ -28,6 +28,11 @@ const DriverSchema = mongoose.Schema({
     creditFuelRate: {
         type: Number,
         default: 0.0
+    },
+    status: {
+        type: String,
+        enum: ['signed_in', 'signed_out'],
+        default: 'signed_out'
     }
 }, { timestamps: true });
 

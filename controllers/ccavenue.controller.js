@@ -41,12 +41,13 @@ exports.initiateBalancePayment = async (req, res) => {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
 
-        // Create balance reference order id (no real order) - use underscore format for reliability
-        // Format: BAL_userId_amount_timestamp_suffix
-        const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
+        // Create balance reference order id (no real order) - keep under 40 chars for CCAvenue
+        // Format: BAL_userIdShort_amount_timestampShort_suffix
+        const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
         const originalAmountCents = Math.round(parseFloat(amount) * 100); // Convert to cents to avoid decimal
-        const randomSuffix = Math.random().toString(36).substring(2, 4); // Shorter random suffix
-        const balanceRefId = `BAL_${userId}_${originalAmountCents}_${timestamp}_${randomSuffix}`;
+        const userIdShort = userId.slice(-8); // Last 8 chars of user ID
+        const randomSuffix = Math.random().toString(36).substring(2, 3); // Single char suffix
+        const balanceRefId = `BAL_${userIdShort}_${originalAmountCents}_${timestamp}_${randomSuffix}`;
 
         console.log('🆔 Generated balance order ID:', balanceRefId, 'Length:', balanceRefId.length);
 
@@ -426,19 +427,42 @@ exports.handlePaymentResponse = async (req, res) => {
                 console.log('🔍 STEP 1: Parsing Order ID');
 
                 if (orderId.includes('_')) {
-                    // Underscore format: BAL_userId_amount_timestamp_suffix
+                    // Underscore format: BAL_userIdShort_amount_timestamp_suffix
                     console.log('📝 Format: Underscore format');
                     const parts = String(orderId).split('_');
                     if (parts.length >= 3) {
-                        balUserId = parts[1];
+                        const userIdShort = parts[1];
                         const amountPart = parts[2];
+                        
+                        // Find the full user ID by matching the last 8 characters
+                        console.log('🔍 Looking up user by last 8 chars:', userIdShort);
+                        try {
+                            const User = require('../models/User.model.js');
+                            const regexPattern = new RegExp(userIdShort + '$');
+                            const userWithMatchingId = await User.findOne({
+                                _id: regexPattern
+                            }).select('_id');
+                            
+                            if (userWithMatchingId) {
+                                balUserId = userWithMatchingId._id.toString();
+                                console.log('✅ Found matching user:', balUserId);
+                            } else {
+                                console.error('❌ No user found with matching suffix:', userIdShort);
+                                return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=UserNotFound`);
+                            }
+                        } catch (userLookupError) {
+                            console.error('❌ Error looking up user:', userLookupError.message);
+                            return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=UserLookupError`);
+                        }
+                        
                         if (amountPart.includes('.')) {
                             originalAmount = parseFloat(amountPart);
                         } else {
                             originalAmount = parseInt(amountPart) / 100;
                         }
                         console.log('🔍 Underscore parsing:', {
-                            userId: balUserId,
+                            userIdShort,
+                            resolvedUserId: balUserId,
                             amountPart,
                             extractedAmount: originalAmount
                         });

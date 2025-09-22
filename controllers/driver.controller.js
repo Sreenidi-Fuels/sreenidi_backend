@@ -1,4 +1,5 @@
 const Driver = require('../models/Driver.model.js');
+const googleSheetsService = require('../services/googleSheets.service.js');
 
 // Create a new driver
 exports.createDriver = async (req, res) => {
@@ -43,7 +44,8 @@ exports.loginDriver = async (req, res) => {
                 name: driver.name,
                 mobile: driver.mobile,
                 vehicleDetails: driver.vehicleDetails,
-                creditFuelRate: driver.creditFuelRate
+                creditFuelRate: driver.creditFuelRate,
+                status: driver.status || 'signed_out'
             }
         });
     } catch (err) {
@@ -214,5 +216,159 @@ exports.deleteDriver = async (req, res) => {
         res.json({ message: 'Driver deleted successfully' });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+};
+
+// Driver Sign-In
+exports.driverSignIn = async (req, res) => {
+    try {
+        const { driverId, driverName, openReading } = req.body;
+
+        // Validate required fields
+        if (!driverId || !driverName || !openReading) {
+            return res.status(400).json({ 
+                error: 'driverId, driverName, and openReading are required' 
+            });
+        }
+
+        // Check if driver exists and get current status
+        const driver = await Driver.findById(driverId);
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                error: 'Driver not found'
+            });
+        }
+
+        // Check if driver is already signed in
+        if (driver.status === 'signed_in') {
+            return res.status(400).json({
+                success: false,
+                error: 'Driver is already signed in. Please sign out first.',
+                currentStatus: driver.status,
+                driverName: driver.name
+            });
+        }
+
+        // Update driver status to 'signed_in' in database
+        const updatedDriver = await Driver.findByIdAndUpdate(
+            driverId,
+            { status: 'signed_in' },
+            { new: true, runValidators: true }
+        );
+
+        // Log the sign-in data to Google Sheets
+        const signInData = await googleSheetsService.logSignIn(driverId, driverName, openReading);
+
+        res.status(200).json({
+            success: true,
+            message: 'Driver sign-in recorded successfully',
+            data: {
+                ...signInData,
+                status: updatedDriver.status,
+                previousStatus: 'signed_out'
+            }
+        });
+    } catch (err) {
+        console.error('Error in driver sign-in:', err);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to record driver sign-in',
+            details: err.message 
+        });
+    }
+};
+
+// Driver Sign-Out
+exports.driverSignOut = async (req, res) => {
+    try {
+        const { driverId, driverName, closeReading, cashAmount } = req.body;
+
+        // Validate required fields
+        if (!driverId || !driverName || !closeReading || !cashAmount) {
+            return res.status(400).json({ 
+                error: 'driverId, driverName, closeReading, and cashAmount are required' 
+            });
+        }
+
+        // Check if driver exists and get current status
+        const driver = await Driver.findById(driverId);
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                error: 'Driver not found'
+            });
+        }
+
+        // Check if driver is already signed out
+        if (driver.status === 'signed_out') {
+            return res.status(400).json({
+                success: false,
+                error: 'Driver is already signed out. Please sign in first.',
+                currentStatus: driver.status,
+                driverName: driver.name
+            });
+        }
+
+        // Update driver status to 'signed_out' in database
+        const updatedDriver = await Driver.findByIdAndUpdate(
+            driverId,
+            { status: 'signed_out' },
+            { new: true, runValidators: true }
+        );
+
+        // Log the sign-out data to Google Sheets
+        const signOutData = await googleSheetsService.logSignOut(driverId, driverName, closeReading, cashAmount);
+
+        res.status(200).json({
+            success: true,
+            message: 'Driver sign-out recorded successfully',
+            data: {
+                ...signOutData,
+                status: updatedDriver.status,
+                previousStatus: 'signed_in'
+            }
+        });
+    } catch (err) {
+        console.error('Error in driver sign-out:', err);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to record driver sign-out',
+            details: err.message 
+        });
+    }
+};
+
+// Get Driver Status
+exports.getDriverStatus = async (req, res) => {
+    try {
+        const { driverId } = req.params;
+
+        // Find driver by ID
+        const driver = await Driver.findById(driverId);
+
+        if (!driver) {
+            return res.status(404).json({ 
+                success: false,
+                error: 'Driver not found' 
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                driverId: driver._id,
+                driverName: driver.name,
+                status: driver.status,
+                lastUpdated: driver.updatedAt
+            }
+        });
+    } catch (err) {
+        console.error('Error getting driver status:', err);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to get driver status',
+            details: err.message 
+        });
     }
 };

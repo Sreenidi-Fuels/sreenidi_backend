@@ -128,7 +128,7 @@ const createInvoice = async (req, res) => {
       billingAddress: order.billingAddress?._id || null,
       dispatchedThrough: null, // Will be updated later from frontend
       vehicleNO: vehicle ? vehicle.vehicleNo : null,
-      jcno: jcno ?? order.jcno ?? "",
+      jcno: jcno ?? order.jcno ?? null,
       fuelQuantity: order.fuelQuantity,
       // Values provided by frontend
       amount: effectiveAmount,

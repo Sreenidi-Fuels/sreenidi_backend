@@ -44,6 +44,12 @@ app.use('/api/ledger', require('./routes/ledger.route'));
 app.use('/api/credit', require('./routes/credit.route'));
 app.use('/api/cash-ledger', require('./routes/cash-ledger.route'));
 app.use('/api/feedback', require('./routes/feedback.route'));
+app.use('/api/images-carousel', require('./routes/carousel.route'));
+app.use('/api/settings', require('./routes/settings.route'));
+
+// Direct upload image route (redirects to carousel upload)
+const { upload, uploadCarouselImage } = require('./controllers/carousel.controller');
+app.post('/api/upload-image', upload.single('image'), uploadCarouselImage);
 
 // --- Error Handling Middleware Later ---
 // const { errorHandler } = require('./middleware/errorMiddleware');
@@ -54,7 +60,7 @@ const PORT = process.env.PORT || 3000;
 // Listen on both localhost and network IP
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Server accessible on your network at http://192.168.0.111:${PORT}`);
-  console.log(`Flutter app should use: 192.168.0.111:${PORT}`);
-  console.log(`Postman can use: http://localhost:${PORT} or 192.168.0.111:${PORT}`);
+  console.log(`Server accessible on your network at http://192.168.0.115:${PORT}`);
+  console.log(`Flutter app should use: 192.168.0.115:${PORT}`);
+  console.log(`Postman can use: http://localhost:${PORT} or 192.168.0.115:${PORT}`);
 });

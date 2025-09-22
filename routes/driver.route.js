@@ -33,4 +33,13 @@ router.get('/:id', driverController.getDriverById);
 // Delete a driver by ID
 router.delete('/:id', driverController.deleteDriver);
 
+// Driver Sign-In
+router.post('/signin', driverController.driverSignIn);
+
+// Driver Sign-Out
+router.post('/signout', driverController.driverSignOut);
+
+// Get Driver Status
+router.get('/:driverId/status', driverController.getDriverStatus);
+
 module.exports = router;

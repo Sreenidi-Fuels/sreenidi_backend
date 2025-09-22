@@ -50,7 +50,7 @@ const InvoiceSchema = new mongoose.Schema(
     },
     jcno: {
       type: String,
-      default: "",
+      default: null,
       unique: true,
       sparse: true
     },
