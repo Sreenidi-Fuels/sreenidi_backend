@@ -438,20 +438,43 @@ exports.handlePaymentResponse = async (req, res) => {
                         console.log('🔍 Looking up user by last 8 chars:', userIdShort);
                         try {
                             const User = require('../models/User.model.js');
-                            const regexPattern = new RegExp(userIdShort + '$');
-                            const userWithMatchingId = await User.findOne({
-                                _id: regexPattern
-                            }).select('_id');
+                            
+                            // Try multiple approaches to find the user
+                            let userWithMatchingId = null;
+                            
+                            // Approach 1: Direct regex match on _id field
+                            try {
+                                const regexPattern = new RegExp(userIdShort + '$');
+                                userWithMatchingId = await User.findOne({
+                                    _id: regexPattern
+                                }).select('_id');
+                                console.log('🔍 Regex approach result:', !!userWithMatchingId);
+                            } catch (regexError) {
+                                console.log('🔍 Regex approach failed:', regexError.message);
+                            }
+                            
+                            // Approach 2: If regex fails, try finding all users and match manually
+                            if (!userWithMatchingId) {
+                                console.log('🔍 Trying manual matching approach...');
+                                const allUsers = await User.find({}).select('_id');
+                                userWithMatchingId = allUsers.find(user => 
+                                    user._id.toString().endsWith(userIdShort)
+                                );
+                                console.log('🔍 Manual approach result:', !!userWithMatchingId);
+                                console.log('🔍 Checked', allUsers.length, 'users');
+                            }
                             
                             if (userWithMatchingId) {
                                 balUserId = userWithMatchingId._id.toString();
                                 console.log('✅ Found matching user:', balUserId);
                             } else {
                                 console.error('❌ No user found with matching suffix:', userIdShort);
+                                console.error('❌ Tried both regex and manual matching approaches');
                                 return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=UserNotFound`);
                             }
                         } catch (userLookupError) {
                             console.error('❌ Error looking up user:', userLookupError.message);
+                            console.error('❌ Stack trace:', userLookupError.stack);
                             return res.redirect(`sreedifuels://payment-failed?order_id=${orderId}&reason=UserLookupError`);
                         }
                         
