@@ -1,5 +1,13 @@
-const { google } = require('googleapis');
 const path = require('path');
+
+// Try to require googleapis, but don't crash if it's not available
+let google;
+try {
+    google = require('googleapis').google;
+} catch (error) {
+    console.log('googleapis package not found - Google Sheets integration disabled');
+    google = null;
+}
 
 class GoogleSheetsService {
     constructor() {
@@ -14,6 +22,12 @@ class GoogleSheetsService {
 
     async initializeAuth() {
         try {
+            if (!google) {
+                console.log('Google Sheets not available - googleapis package not installed');
+                this.isConfigured = false;
+                return;
+            }
+
             // Check if credentials file exists
             const credentialsPath = process.env.GOOGLE_CREDENTIALS_PATH || path.join(__dirname, '..', 'credentials', 'google-credentials.json');
             
