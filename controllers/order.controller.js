@@ -912,7 +912,17 @@ exports.getUserOrderCountLastWeek = async (req, res) => {
         lastWeek.setDate(now.getDate() - 7);
         const count = await Order.countDocuments({
             userId: userId,
-            createdAt: { $gte: lastWeek, $lte: now }
+            createdAt: { $gte: lastWeek, $lte: now },
+            // Exclude CCAvenue orders with failed or processing status
+            $or: [
+                // Include non-CCAvenue orders
+                { 'paymentDetails.method': { $ne: 'ccavenue' } },
+                // Include CCAvenue orders that are not failed or processing
+                {
+                    'paymentDetails.method': 'ccavenue',
+                    'paymentDetails.status': { $nin: ['pending', 'processing', 'failed', 'cancelled'] }
+                }
+            ]
         });
         res.json({ userId, count });
     } catch (err) {

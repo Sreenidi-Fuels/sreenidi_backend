@@ -60,7 +60,7 @@ const PORT = process.env.PORT || 3000;
 // Listen on both localhost and network IP
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Server accessible on your network at http://192.168.0.115:${PORT}`);
-  console.log(`Flutter app should use: 192.168.0.115:${PORT}`);
-  console.log(`Postman can use: http://localhost:${PORT} or 192.168.0.115:${PORT}`);
+  console.log(`Server accessible on your network at http://192.168.0.105:${PORT}`);
+  console.log(`Flutter app should use: 192.168.0.105:${PORT}`);
+  console.log(`Postman can use: http://localhost:${PORT} or 192.168.0.105:${PORT}`);
 });
