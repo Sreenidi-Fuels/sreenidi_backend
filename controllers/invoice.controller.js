@@ -182,7 +182,7 @@ const createInvoice = async (req, res) => {
 
     const populatedInvoice = await Invoice.findById(invoice._id)
       .populate('orderId')
-      .populate('userId', 'name email mobile')
+      .populate('userId', 'name email mobile gstNumber')
       .populate('vehicleId')
       .populate('shippingAddress')
       .populate('billingAddress');
@@ -210,7 +210,7 @@ const getAllInvoices = async (req, res) => {
 
     const invoices = await Invoice.find(query)
       .populate('orderId')
-      .populate('userId', 'name email mobile')
+      .populate('userId', 'name email mobile gstNumber')
       .populate('vehicleId')
       .populate('shippingAddress')
       .populate('billingAddress')
@@ -251,7 +251,7 @@ const getInvoiceById = async (req, res) => {
         path: 'orderId',
         populate: { path: 'tracking.driverAssignment.driverId', select: 'name mobile role creditFuelRate' }
       })
-      .populate('userId', 'name email mobile')
+      .populate('userId', 'name email mobile gstNumber')
       .populate('vehicleId')
       .populate('shippingAddress')
       .populate('billingAddress');
@@ -297,7 +297,7 @@ const getInvoicesByOrderId = async (req, res) => {
 
     const invoices = await Invoice.find({ orderId })
       .populate('orderId')
-      .populate('userId', 'name email mobile')
+      .populate('userId', 'name email mobile gstNumber')
       .populate('vehicleId')
       .populate('shippingAddress')
       .populate('billingAddress')
@@ -376,7 +376,7 @@ const updateInvoice = async (req, res) => {
       { new: true, runValidators: true }
     )
       .populate('orderId')
-      .populate('userId', 'name email mobile')
+      .populate('userId', 'name email mobile gstNumber')
       .populate('vehicleId')
       .populate('shippingAddress')
       .populate('billingAddress');
