@@ -190,8 +190,8 @@ exports.createDriverCreditOrder = async (req, res) => {
             deliveryMode: req.body.deliveryMode || 'earliest',
             receiverDetails: req.body.receiverDetails || { type: 'self' },
             asset: req.body.asset || req.body.assetId,
-            // For credit orders, use totalAmount as the order amount
-            amount: req.body.totalAmount || req.body.amount
+            // Keep original amount (fuel cost) for orderAmount, don't override with totalAmount
+            amount: req.body.amount
         };
 
         const order = new Order(orderData);
@@ -298,10 +298,9 @@ exports.createOrder = async (req, res) => {
             console.log('Remaining credit after order:', amountOfCreditAvailable - validationAmount);
         }
 
-        // For credit orders, use totalAmount as the order amount
+        // Keep original amount (fuel cost) for all orders, don't override with totalAmount
         const orderData = {
-            ...req.body,
-            ...(req.body.paymentType === 'credit' && { amount: req.body.totalAmount || req.body.amount })
+            ...req.body
         };
         const order = new Order(orderData);
         await order.save();
@@ -440,8 +439,8 @@ exports.createDirectCreditOrder = async (req, res) => {
             paymentType: 'credit',
             // Preserve the deliveryMode from request body, don't override
             asset: req.body.assetId,
-            // For credit orders, use totalAmount as the order amount
-            amount: req.body.totalAmount || req.body.amount
+            // Keep original amount (fuel cost) for orderAmount, don't override with totalAmount
+            amount: req.body.amount
         };
         const order = new Order(orderData);
         await order.save();
