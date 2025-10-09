@@ -15,6 +15,16 @@ const UserSchema = new mongoose.Schema({
         default: function() { return this.role === 'credited' ? 0 : undefined; },
         min: 0
     },
+    creditLimitUsed: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    amountOfCreditAvailable: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
     assets: [{ type: mongoose.Schema.Types.ObjectId, ref: "Asset" }],
     feedback: [
         {

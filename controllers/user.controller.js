@@ -13,7 +13,7 @@ exports.createUser = async (req, res) => {
         if (req.body.address === null || (Array.isArray(req.body.address) && req.body.address.length === 1 && req.body.address[0] === null)) {
             delete req.body.address;
         }
-        
+
         // Create user first (without address)
         const user = new User(req.body);
         await user.save();
@@ -101,32 +101,32 @@ async function calculateCreditLimitUsage(userId) {
         const Order = require('../models/Order.model.js');
         const Invoice = require('../models/Invoice.model.js');
         const UserLedger = require('../models/UserLedger.model.js');
-        
+
         // Get all ACTIVE credit orders for this user (pending, dispatched, completed)
         const creditOrders = await Order.find({
             userId: userId,
             paymentType: 'credit',
             'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
         }).select('_id amount');
-        
+
         // Get user ledger to know total payments made
         const userLedger = await UserLedger.findOne({ userId });
         const totalPaid = userLedger ? userLedger.totalPaid : 0;
-        
+
         let creditLimitUsed = 0;
-        
+
         // Check each order to see if it should still count toward credit limit
         for (const order of creditOrders) {
             // Check if this order has a finalised invoice
-            const invoice = await Invoice.findOne({ 
-                orderId: order._id, 
-                status: 'finalised' 
+            const invoice = await Invoice.findOne({
+                orderId: order._id,
+                status: 'finalised'
             });
-            
+
             if (invoice) {
                 // Order has finalised invoice - check if it's been paid
                 const orderAmount = Number(order.amount) || 0;
-                
+
                 // Calculate how much of this order has been paid
                 // We need to check if the total payments cover this order
                 if (totalPaid >= orderAmount) {
@@ -144,13 +144,13 @@ async function calculateCreditLimitUsage(userId) {
                 console.log(`💳 Order ${order._id} (₹${order.amount}) has no finalised invoice - counting toward credit limit`);
             }
         }
-        
+
         console.log(`Credit limit usage for user ${userId}:`, {
             totalOrders: creditOrders.length,
             totalPaid: totalPaid,
             creditLimitUsed: creditLimitUsed
         });
-        
+
         return creditLimitUsed;
     } catch (error) {
         console.error('Error calculating credit limit usage:', error);
@@ -162,21 +162,21 @@ async function calculateCreditLimitUsage(userId) {
 exports.getAllCreditedUsers = async (req, res) => {
     try {
         const users = await User.find({ role: 'credited' }).populate(['address', 'assets']);
-        
+
         // Add fresh credit data for all credited users
         try {
             const UserLedger = require('../models/UserLedger.model.js');
-            
+
             const usersWithCreditData = await Promise.all(users.map(async (user) => {
                 const userLedger = await UserLedger.findOne({ userId: user._id });
                 const userData = user.toObject();
-                
+
                 if (userLedger) {
                     // Add fresh credit data
                     userData.outstandingAmount = userLedger.outstandingAmount;
                     userData.totalPaid = userLedger.totalPaid;
                     userData.totalOrders = userLedger.totalOrders;
-                    
+
                     // ✅ Use centralized availability computation
                     if (user.creditLimit && user.creditLimit > 0) {
                         const LedgerService = require('../services/ledger.service.js');
@@ -187,14 +187,14 @@ exports.getAllCreditedUsers = async (req, res) => {
                         userData.creditLimitUsed = 0;
                         userData.amountOfCreditAvailable = 0;
                     }
-                    
+
                     userData.lastTransactionDate = userLedger.lastTransactionDate;
                 } else {
                     // No ledger found, set defaults
                     userData.outstandingAmount = 0;
                     userData.totalPaid = 0;
                     userData.totalOrders = 0;
-                    
+
                     // ✅ FIXED: Credit available equals credit limit when no orders used
                     if (user.creditLimit && user.creditLimit > 0) {
                         userData.creditLimitUsed = 0;
@@ -203,13 +203,13 @@ exports.getAllCreditedUsers = async (req, res) => {
                         userData.creditLimitUsed = 0;
                         userData.amountOfCreditAvailable = 0;
                     }
-                    
+
                     userData.lastTransactionDate = null;
                 }
-                
+
                 return userData;
             }));
-            
+
             res.json(usersWithCreditData);
         } catch (ledgerError) {
             console.error('Error fetching user ledgers:', ledgerError);
@@ -226,21 +226,24 @@ exports.getUserById = async (req, res) => {
     try {
         const user = await User.findById(req.params.id).populate(['address', 'assets']);
         if (!user) return res.status(404).json({ error: 'User not found' });
-        
+
         // For credited users, add fresh credit data from UserLedger
         if (user.role === 'credited') {
+
             try {
                 const UserLedger = require('../models/UserLedger.model.js');
                 const userLedger = await UserLedger.findOne({ userId: req.params.id });
-                
+
+
+
                 const userData = user.toObject();
-                
+
                 if (userLedger) {
                     // Add fresh credit data
                     userData.outstandingAmount = userLedger.outstandingAmount;
                     userData.totalPaid = userLedger.totalPaid;
                     userData.totalOrders = userLedger.totalOrders;
-                    
+
                     // ✅ Use centralized availability computation
                     if (user.creditLimit && user.creditLimit > 0) {
                         const LedgerService = require('../services/ledger.service.js');
@@ -251,26 +254,29 @@ exports.getUserById = async (req, res) => {
                         userData.creditLimitUsed = 0;
                         userData.amountOfCreditAvailable = 0;
                     }
-                    
+
                     userData.lastTransactionDate = userLedger.lastTransactionDate;
                 } else {
+
                     // No ledger found, set defaults
                     userData.outstandingAmount = 0;
                     userData.totalPaid = 0;
                     userData.totalOrders = 0;
-                    
-                    // ✅ FIXED: Credit available equals credit limit when no orders used
+
+                    // ✅ CALCULATE REAL-TIME CREDIT EVEN WITHOUT LEDGER
                     if (user.creditLimit && user.creditLimit > 0) {
-                        userData.creditLimitUsed = 0;
-                        userData.amountOfCreditAvailable = user.creditLimit;
+                        const LedgerService = require('../services/ledger.service.js');
+                        const { creditLimitUsed, amountOfCreditAvailable } = await LedgerService.computeCreditAvailability(req.params.id);
+                        userData.creditLimitUsed = creditLimitUsed;
+                        userData.amountOfCreditAvailable = amountOfCreditAvailable;
                     } else {
                         userData.creditLimitUsed = 0;
                         userData.amountOfCreditAvailable = 0;
                     }
-                    
+
                     userData.lastTransactionDate = null;
                 }
-                
+
                 res.json(userData);
             } catch (ledgerError) {
                 console.error('Error fetching user ledger:', ledgerError);
@@ -288,7 +294,7 @@ exports.getUserById = async (req, res) => {
 // Get a single user by phone number
 exports.getUserByPhoneNumber = async (req, res) => {
     try {
-        const phoneNumber = "+91"+req.params.phoneNumber;
+        const phoneNumber = "+91" + req.params.phoneNumber;
         if (!phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
 
         const user = await User.findOne({ phoneNumber: phoneNumber }).populate(['address', 'assets']);
@@ -343,7 +349,7 @@ exports.addAssetsToUser = async (req, res) => {
             id,
             { $push: { assets: { $each: assetIds } } },
             { new: true, runValidators: true }
-        );  
+        );
 
         if (!user) return res.status(404).json({ error: 'User not found' });
 

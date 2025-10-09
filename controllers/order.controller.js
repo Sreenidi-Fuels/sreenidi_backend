@@ -306,6 +306,20 @@ exports.createOrder = async (req, res) => {
         await order.save();
         await order.populate(populateOptions);
 
+        // ✅ UPDATE: Update user's credit availability immediately after credit order creation
+        if (paymentType === 'credit') {
+            try {
+                const { creditLimitUsed, amountOfCreditAvailable } = await LedgerService.updateUserCreditAvailability(userId);
+                console.log('✅ Credit availability updated after order creation:', {
+                    creditLimitUsed,
+                    amountOfCreditAvailable
+                });
+            } catch (creditUpdateError) {
+                console.warn('⚠️ Failed to update credit availability after order creation:', creditUpdateError.message);
+                // Non-fatal: continue with order creation
+            }
+        }
+
         // ✅ REMOVED: No ledger entry created on order creation
         // Ledger entries are now created when:
         // 1. Payment is received (CREDIT entry - totalPaid increases)
@@ -445,6 +459,16 @@ exports.createDirectCreditOrder = async (req, res) => {
         const order = new Order(orderData);
         await order.save();
         await order.populate(populateOptions);
+
+        // ✅ UPDATE: Update user's credit availability immediately after order creation
+        try {
+            await LedgerService.updateUserCreditAvailability(userId);
+            console.log('✅ Credit availability updated after order creation');
+        } catch (creditUpdateError) {
+            console.warn('⚠️ Failed to update credit availability after order creation:', creditUpdateError.message);
+            // Non-fatal: continue with order creation
+        }
+
         // ℹ️ No DEBIT entry here for credit orders.
         // DEBIT entry will be created when the invoice is updated to status 'finalised',
         // using the invoice total amount (same as ccavenue flow).

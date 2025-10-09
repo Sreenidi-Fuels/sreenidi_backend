@@ -582,7 +582,7 @@ exports.handlePaymentResponse = async (req, res) => {
                         userId: balUserId,
                         orderId: balanceOrderObjectId,
                         amount: originalAmount,
-                        description: `Balance payment via CCAvenue - ₹${originalAmount}`,
+                        description: `Credit payment received - CCAvenue_${transactionId}`,
                         options: {
                             paymentMethod: 'ccavenue',
                             transactionId: transactionId,
@@ -595,7 +595,7 @@ exports.handlePaymentResponse = async (req, res) => {
                         balUserId,
                         balanceOrderObjectId,
                         originalAmount,
-                        `Balance payment via CCAvenue - ₹${originalAmount}`,
+                        `Credit payment received - CCAvenue_${transactionId}`,
                         {
                             paymentMethod: 'ccavenue',
                             transactionId: transactionId,
@@ -642,7 +642,7 @@ exports.handlePaymentResponse = async (req, res) => {
                             amount: originalAmount,
                             balanceBefore: balanceBefore,
                             balanceAfter: balanceAfter,
-                            description: `Balance payment via CCAvenue - ₹${originalAmount} (Manual Entry)`,
+                            description: `Credit payment received - CCAvenue_${transactionId}_Manual`,
                             paymentMethod: 'ccavenue',
                             paymentStatus: 'completed',
                             transactionId: transactionId,

@@ -511,7 +511,8 @@ class LedgerService {
             userId: userIdObj,
             paymentType: 'credit',
             'tracking.dispatch.status': { $in: ['pending', 'dispatched', 'completed'] }
-        }).select('amount totalAmount');
+        }).select('amount totalAmount tracking.dispatch.status');
+        
         const creditOrdersTotal = creditOrders.reduce((sum, o) => {
             // Use totalAmount if available, otherwise fall back to amount
             const orderAmount = o.totalAmount !== null && o.totalAmount !== undefined ? o.totalAmount : o.amount;
@@ -536,6 +537,7 @@ class LedgerService {
         user.amountOfCreditAvailable = amountOfCreditAvailable;
         user.lastTransactionDate = new Date();
         await user.save();
+        
         return { creditLimitUsed, amountOfCreditAvailable };
     }
 
