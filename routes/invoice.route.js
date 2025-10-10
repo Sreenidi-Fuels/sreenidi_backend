@@ -6,7 +6,7 @@ const router = express.Router();
  * @route   POST /api/invoice
  * @desc    Create a new invoice
  * @access  Private
- * @body    { orderId, vehicleId, remarks? }
+ * @body    { orderId, vehicleId, remarks?, particulars? }
  */
 router.post('/', invoiceController.createInvoice);
 
@@ -39,7 +39,7 @@ router.get('/order/:orderId', invoiceController.getInvoicesByOrderId);
  * @desc    Update invoice
  * @access  Private
  * @params  id
- * @body    { remarks?, status? }
+ * @body    { remarks?, particulars?, status? }
  */
 router.put('/:id', invoiceController.updateInvoice);
 

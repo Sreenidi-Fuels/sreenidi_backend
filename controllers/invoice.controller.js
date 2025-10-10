@@ -26,6 +26,7 @@ const createInvoice = async (req, res) => {
       orderId,
       vehicleId,
       remarks = "",
+      particulars = "",
       paymentMethod,
       destination,
       rate,
@@ -142,6 +143,7 @@ const createInvoice = async (req, res) => {
       cgst: taxes.cgst,
       sgst: taxes.sgst,
       remarks,
+      particulars,
       status: 'issued'
     };
 
@@ -303,6 +305,16 @@ const getInvoicesByOrderId = async (req, res) => {
       .populate('billingAddress')
       .sort({ createdAt: -1 });
 
+    // 🔍 DEBUG: Log what we're returning
+    console.log('=== GET INVOICES BY ORDER DEBUG ===');
+    console.log('Order ID:', orderId);
+    console.log('Found invoices count:', invoices.length);
+    if (invoices.length > 0) {
+      console.log('First invoice particulars:', invoices[0].particulars);
+      console.log('First invoice remarks:', invoices[0].remarks);
+      console.log('First invoice ID:', invoices[0]._id);
+    }
+
     res.status(200).json({ success: true, data: invoices });
 
   } catch (error) {
@@ -319,10 +331,21 @@ const getInvoicesByOrderId = async (req, res) => {
 const updateInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    const { remarks, status, paymentMethod, destination, rate, amount, invoiceAmount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId, vehicleNO, dispatchedThrough, jcno } = req.body;
+    const { remarks, particulars, status, paymentMethod, destination, rate, amount, invoiceAmount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId, vehicleNO, dispatchedThrough, jcno } = req.body;
+
+    // 🔍 DEBUG: Log the incoming request
+    console.log('=== UPDATE INVOICE DEBUG ===');
+    console.log('Invoice ID:', id);
+    console.log('Request body particulars:', particulars);
+    console.log('Request body remarks:', remarks);
+    console.log('Full request body:', req.body);
 
     const updateData = {};
     if (remarks !== undefined) updateData.remarks = remarks;
+    if (particulars !== undefined) updateData.particulars = particulars;
+    
+    // 🔍 DEBUG: Log what will be updated
+    console.log('Update data object:', updateData);
     if (status !== undefined) updateData.status = status;
     if (paymentMethod !== undefined) updateData.paymentMethod = paymentMethod;
     if (destination !== undefined) updateData.destination = destination;
@@ -370,6 +393,11 @@ const updateInvoice = async (req, res) => {
     if (totalAmount !== undefined) updateData.totalAmount = totalAmount;
     if (amountInChargeable !== undefined) updateData.amountInChargeable = amountInChargeable;
 
+    // 🔍 DEBUG: Check invoice before update
+    const beforeUpdate = await Invoice.findById(id);
+    console.log('Before update - particulars:', beforeUpdate?.particulars);
+    console.log('Before update - remarks:', beforeUpdate?.remarks);
+
     const invoice = await Invoice.findByIdAndUpdate(
       id,
       updateData,
@@ -384,6 +412,10 @@ const updateInvoice = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
     }
+
+    // 🔍 DEBUG: Check invoice after update
+    console.log('After update - particulars:', invoice.particulars);
+    console.log('After update - remarks:', invoice.remarks);
 
     // ✅ FIX: Create ledger entries ONLY when status is set to 'finalised'
     // This prevents duplicate entries when status changes from 'confirmed' to 'finalised'
@@ -696,6 +728,7 @@ const generateInvoiceForCompletedOrder = async (orderId, vehicleId, remarks = ""
       cgst: 0,
       sgst: 0,
       remarks,
+      particulars: "",
       status: 'issued'
     };
 

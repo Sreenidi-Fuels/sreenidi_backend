@@ -100,6 +100,10 @@ const InvoiceSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    particulars: {
+      type: String,
+      default: "",
+    },
     status: {
       type: String,
       enum: ["draft", "issued", "confirmed", "finalised", "cancelled"],
