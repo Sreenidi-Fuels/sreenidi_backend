@@ -102,7 +102,7 @@ const createInvoice = async (req, res) => {
             const driver = await Driver.findById(driverId).select('creditFuelRate');
             if (driver && driver.creditFuelRate) driverRate = Number(driver.creditFuelRate);
           }
-        } catch (_) {}
+        } catch (_) { }
 
         if (driverRate != null) {
           defaultRate = driverRate;
@@ -117,7 +117,7 @@ const createInvoice = async (req, res) => {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const invoiceData = {
       invoiceNo,
@@ -165,7 +165,7 @@ const createInvoice = async (req, res) => {
         const actualPaymentMethod = order.paymentType || 'credit';
         console.log('📋 Invoice creation - Order payment type:', actualPaymentMethod);
         console.log('💰 Using payment method for ledger entry:', actualPaymentMethod);
-        
+
         await LedgerService.createCreditEntry(
           order.userId._id,
           order._id,
@@ -205,7 +205,7 @@ const createInvoice = async (req, res) => {
 const getAllInvoices = async (req, res) => {
   try {
     const { page = 1, limit = 10, status, userId } = req.query;
-    
+
     const query = {};
     if (status) query.status = status;
     if (userId) query.userId = userId;
@@ -278,7 +278,7 @@ const getInvoiceById = async (req, res) => {
         enriched = invoice.toObject ? invoice.toObject() : invoice;
         enriched.driverInfo = driverInfo;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     res.status(200).json({ success: true, data: enriched });
 
@@ -343,7 +343,7 @@ const updateInvoice = async (req, res) => {
     const updateData = {};
     if (remarks !== undefined) updateData.remarks = remarks;
     if (particulars !== undefined) updateData.particulars = particulars;
-    
+
     // 🔍 DEBUG: Log what will be updated
     console.log('Update data object:', updateData);
     if (status !== undefined) updateData.status = status;
@@ -423,26 +423,26 @@ const updateInvoice = async (req, res) => {
     console.log('Request body status:', status);
     console.log('Updated invoice status:', invoice.status);
     console.log('Status comparison (status === "finalised"):', status === 'finalised');
-    
+
     // Check if we need to create ledger entries
     // ONLY create entries when status is being set to 'finalised'
     const shouldHandleDeliveryEntry = status === 'finalised';
-    
+
     console.log('Should handle delivery entry:', shouldHandleDeliveryEntry);
     console.log('Reason:', shouldHandleDeliveryEntry ? 'Status being set to finalised' : 'Status not finalised - no ledger entries needed');
-    
+
     if (shouldHandleDeliveryEntry) {
       // 🚨 CRITICAL FIX: Validate invoice amounts before creating ledger entries
       const deliveryAmount = invoice.totalAmount || invoice.amount;
-      
+
       // Validate that invoice amount makes sense
       if (!deliveryAmount || deliveryAmount <= 0) {
         console.log('⚠️ Invalid delivery amount:', deliveryAmount);
         return;
       }
-      
 
-      
+
+
       try {
         console.log('=== Creating BOTH CREDIT and DEBIT Entries for Cash Payment ===');
         console.log('Invoice ID:', invoice._id);
@@ -458,29 +458,29 @@ const updateInvoice = async (req, res) => {
         const Order = require('../models/Order.model.js');
         const order = await Order.findById(invoice.orderId._id);
         const actualPaymentMethod = order ? order.paymentType : 'credit';
-        
+
         console.log('📋 Order payment type:', actualPaymentMethod);
         console.log('💰 Using payment method for ledger entry:', actualPaymentMethod);
-        
+
         // For cash payments, create BOTH CREDIT and DEBIT entries
         if (actualPaymentMethod === 'cash' && order && order.CustomersCash > 0) {
           console.log('💰 Cash payment detected - Creating BOTH entries');
           console.log('CustomersCash:', order.CustomersCash);
           console.log('Order Total Amount:', order.amount);
-          
+
           // 🚨 CRITICAL: Check for existing entries to prevent duplicates
           const existingCreditEntries = await LedgerEntry.find({
             invoiceId: invoice._id,
             type: 'credit',
             paymentMethod: 'cash'
           });
-          
+
           const existingDebitEntries = await LedgerEntry.find({
             invoiceId: invoice._id,
             type: 'debit',
             paymentMethod: 'cash'
           });
-          
+
           if (existingCreditEntries.length > 0) {
             console.log('🚨 DUPLICATE CREDIT ENTRIES DETECTED for invoice:', invoice._id);
             console.log('Existing entries:', existingCreditEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
@@ -492,7 +492,7 @@ const updateInvoice = async (req, res) => {
             });
             console.log('✅ Duplicate CREDIT entries deleted');
           }
-          
+
           if (existingDebitEntries.length > 0) {
             console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for invoice:', invoice._id);
             console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
@@ -504,14 +504,14 @@ const updateInvoice = async (req, res) => {
             });
             console.log('✅ Duplicate DEBIT entries deleted');
           }
-          
+
           // 1. Create CREDIT entry using CustomersCash
           console.log('🆕 Creating CREDIT entry for cash payment received');
           const creditResult = await LedgerService.createPaymentEntry(
             invoice.userId._id,
             invoice.orderId._id,
             order.CustomersCash,
-            `Cash payment received - ${order.fuelQuantity}L fuel delivered`,
+            `Cash payment received - ${order.fuelQuantity}L ${invoice.particulars || 'fuel'} delivered`,
             {
               paymentMethod: 'cash',
               transactionId: `CASH_${order._id}_${Date.now()}`,
@@ -519,34 +519,34 @@ const updateInvoice = async (req, res) => {
             }
           );
           console.log('✅ CREDIT entry created successfully for cash payment:', creditResult);
-          
+
           // 2. Create DEBIT entry using invoice total amount (includes taxes and delivery charges)
           console.log('🆕 Creating DEBIT entry for fuel delivery');
           const debitResult = await LedgerService.createDeliveryEntry(
             invoice.userId._id,
             invoice.orderId._id,
             deliveryAmount, // Use invoice total amount (includes taxes) for cash payments
-            `Fuel delivered - ${order.fuelQuantity}L fuel (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
+            `Fuel delivered - ${order.fuelQuantity}L ${invoice.particulars || 'fuel'} (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
             {
               paymentMethod: 'cash',
               invoiceId: invoice._id
             }
           );
           console.log('✅ DEBIT entry created successfully for fuel delivery:', debitResult);
-          
+
         } else if (actualPaymentMethod === 'credit') {
           // For credit orders, create ONLY DEBIT entry (fuel delivered)
           // CREDIT entry will be created later when user pays via credit payment API
           console.log('💳 Credit order detected - Creating ONLY DEBIT entry');
           console.log('Order Amount:', order.amount);
-          
+
           // 🚨 CRITICAL: Check for existing entries to prevent duplicates
           const existingDebitEntries = await LedgerEntry.find({
             invoiceId: invoice._id,
             type: 'debit',
             paymentMethod: 'credit'
           });
-          
+
           if (existingDebitEntries.length > 0) {
             console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for credit invoice:', invoice._id);
             console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
@@ -558,31 +558,31 @@ const updateInvoice = async (req, res) => {
             });
             console.log('✅ Duplicate DEBIT entries deleted');
           }
-          
+
           // Create DEBIT entry for fuel delivery (credit order)
           console.log('🆕 Creating DEBIT entry for credit order fuel delivery');
           const debitResult = await LedgerService.createDeliveryEntry(
             invoice.userId._id,
             invoice.orderId._id,
             deliveryAmount,
-            `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
+            `Fuel delivered - ${order.fuelQuantity}L ${invoice.particulars || 'fuel'} (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
             {
               paymentMethod: 'credit',
               invoiceId: invoice._id
             }
           );
           console.log('✅ DEBIT entry created successfully for credit order fuel delivery:', debitResult);
-          
+
         } else {
           // For other payment types (ccavenue, online), create only DEBIT entry as before
           console.log('🆕 Creating DEBIT entry for fuel delivery (other payment type)');
-          
+
           // 🚨 CRITICAL: Check for existing entries to prevent duplicates
           const existingDebitEntries = await LedgerEntry.find({
             invoiceId: invoice._id,
             type: 'debit'
           });
-          
+
           if (existingDebitEntries.length > 0) {
             console.log('🚨 DUPLICATE DEBIT ENTRIES DETECTED for invoice:', invoice._id);
             console.log('Existing entries:', existingDebitEntries.map(e => ({ id: e._id, amount: e.amount, description: e.description })));
@@ -593,16 +593,16 @@ const updateInvoice = async (req, res) => {
             });
             console.log('✅ Duplicate DEBIT entries deleted');
           }
-          
+
           // Map payment method for ledger entry (convert "online" to "ccavenue")
           const ledgerPaymentMethod = actualPaymentMethod === 'online' ? 'ccavenue' : actualPaymentMethod;
           console.log('💰 Mapped payment method for ledger:', actualPaymentMethod, '→', ledgerPaymentMethod);
-          
+
           const ledgerResult = await LedgerService.createDeliveryEntry(
             invoice.userId._id,
             invoice.orderId._id,
             deliveryAmount,
-            `Fuel delivered - ${invoice.fuelQuantity}L fuel (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
+            `Fuel delivered - ${order.fuelQuantity}L ${invoice.particulars || 'fuel'} (Total: ₹${deliveryAmount}) - Status: ${status || invoice.status}`,
             {
               paymentMethod: ledgerPaymentMethod,
               invoiceId: invoice._id
@@ -625,10 +625,10 @@ const updateInvoice = async (req, res) => {
         } catch (cashLedgerErr) {
           console.warn('⚠️ Failed to create cash ledger entries:', cashLedgerErr.message);
         }
-        
+
         // Recalculate user ledger after creating entries
         await LedgerService.recalculateUserLedger(invoice.userId._id);
-        
+
       } catch (ledgerError) {
         console.error('❌ Ledger entry creation failed:', ledgerError);
         console.error('Error details:', {

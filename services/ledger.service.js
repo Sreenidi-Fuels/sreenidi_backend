@@ -322,13 +322,63 @@ class LedgerService {
                 .skip(skip)
                 .limit(limit)
                 .populate('orderId', 'fuelQuantity amount deliveredLiters')
-                .populate('invoiceId', 'invoiceNo totalAmount')
+                .populate({
+                    path: 'invoiceId',
+                    select: 'invoiceNo totalAmount rate deliveryCharges cgst sgst jcno vehicleNO particulars shippingAddress',
+                    populate: {
+                        path: 'shippingAddress',
+                        select: 'company'
+                    }
+                })
+                .populate('userId', 'gstNumber')
                 .lean();
             
             const total = await LedgerEntry.countDocuments({ userId: userIdObj });
             
+            // Enrich transactions with invoice fields
+            const enrichedTransactions = transactions.map(transaction => {
+                const enriched = { ...transaction };
+                
+                // Add invoice-related fields if invoiceId exists
+                if (transaction.invoiceId) {
+                    const invoice = transaction.invoiceId;
+                    
+                    // Add missing invoice fields
+                    enriched.jcNo = invoice.jcno;
+                    enriched.motorVehicleNo = invoice.vehicleNO;
+                    enriched.rate = invoice.rate;
+                    enriched.deliveryCharges = invoice.deliveryCharges;
+                    enriched.cgst = invoice.cgst;
+                    enriched.sgst = invoice.sgst;
+                    enriched.particulars = invoice.particulars;
+                    
+                    // Add company name from shipping address
+                    if (invoice.shippingAddress && invoice.shippingAddress.company) {
+                        enriched.companyName = invoice.shippingAddress.company;
+                    }
+                    
+                    // Update description to use particulars if available
+                    if (invoice.particulars && invoice.particulars.trim() !== '') {
+                        // Keep the existing description format but replace hardcoded parts with particulars
+                        if (enriched.description && enriched.description.includes('Fuel delivered')) {
+                            enriched.description = enriched.description.replace(
+                                /Fuel delivered - \d+L fuel/,
+                                `Fuel delivered - ${invoice.particulars}`
+                            );
+                        }
+                    }
+                }
+                
+                // Add customer GST number from user
+                if (transaction.userId && transaction.userId.gstNumber) {
+                    enriched.customerGstNumber = transaction.userId.gstNumber;
+                }
+                
+                return enriched;
+            });
+            
             return {
-                transactions,
+                transactions: enrichedTransactions,
                 pagination: {
                     currentPage: page,
                     totalPages: Math.ceil(total / limit),
