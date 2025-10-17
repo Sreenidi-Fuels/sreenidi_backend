@@ -34,6 +34,42 @@ const getUserBalance = async (req, res) => {
 };
 
 /**
+ * @desc    Export user's transaction history (all transactions, no pagination)
+ * @route   GET /api/ledger/users/:userId/transactions/export
+ * @access  Private
+ */
+const exportUserTransactions = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                error: 'User ID is required'
+            });
+        }
+        
+        const transactions = await LedgerService.getUserTransactionsForExport(userId);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                transactions,
+                totalTransactions: transactions.length,
+                exportedAt: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error exporting user transactions:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to export user transactions'
+        });
+    }
+};
+
+/**
  * @desc    Get user's transaction history
  * @route   GET /api/ledger/users/:userId/transactions
  * @access  Private
@@ -344,6 +380,7 @@ const createMissingDebit = async (req, res) => {
 module.exports = {
     getUserBalance,
     getUserTransactions,
+    exportUserTransactions,
     getUserOutstanding,
     getAdminSummary,
     getAllUsersLedger,

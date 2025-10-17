@@ -308,6 +308,98 @@ class LedgerService {
     }
     
     /**
+     * Get user's transaction history for export (all transactions, no pagination)
+     */
+    static async getUserTransactionsForExport(userId) {
+        try {
+            // Convert string ID to ObjectId if needed
+            const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+            
+            const transactions = await LedgerEntry.find({ userId: userIdObj })
+                .sort({ createdAt: -1 })
+                .populate('orderId', 'fuelQuantity amount deliveredLiters')
+                .populate({
+                    path: 'invoiceId',
+                    select: 'invoiceNo totalAmount rate deliveryCharges cgst sgst jcno vehicleNO particulars shippingAddress amount',
+                    populate: {
+                        path: 'shippingAddress',
+                        select: 'company'
+                    }
+                })
+                .populate('userId', 'gstNumber')
+                .lean();
+            
+            // Transform transactions to the exact format requested
+            const exportTransactions = transactions.map(transaction => {
+                const result = {
+                    // 1) Company name (shipping address)
+                    companyName: transaction.invoiceId?.shippingAddress?.company || '',
+                    
+                    // 2) Customer GST number
+                    customerGstNumber: transaction.userId?.gstNumber || '',
+                    
+                    // 3) Date
+                    date: transaction.createdAt,
+                    
+                    // 4) Invoice no
+                    invoiceNo: transaction.invoiceId?.invoiceNo || '',
+                    
+                    // 5) JC no
+                    jcNo: transaction.invoiceId?.jcno || '',
+                    
+                    // 6) Motor vehicle no
+                    motorVehicleNo: transaction.invoiceId?.vehicleNO || '',
+                    
+                    // 7) Description (using particulars if available)
+                    description: transaction.description,
+                    
+                    // 8) Delivered liters
+                    deliveredLiters: transaction.deliveredLiters,
+                    
+                    // 9) Rate
+                    rate: transaction.invoiceId?.rate || null,
+                    
+                    // 10) Invoice amount (base amount from invoice)
+                    invoiceAmount: transaction.invoiceId?.amount || transaction.orderId?.amount || null,
+                    
+                    // 11) Delivery charges
+                    deliveryCharges: transaction.invoiceId?.deliveryCharges || null,
+                    
+                    // 12) CGST
+                    cgst: transaction.invoiceId?.cgst || null,
+                    
+                    // 13) SGST
+                    sgst: transaction.invoiceId?.sgst || null,
+                    
+                    // 14) Total amount
+                    totalAmount: transaction.amount, // This is the ledger entry amount
+                    
+                    // 15) Payment type (credit or debit)
+                    paymentType: transaction.type,
+                    
+                    // 16) Payment received date (only for credit entries)
+                    paymentReceivedDate: transaction.type === 'credit' ? transaction.createdAt : null,
+                    
+                    // 17) Amount reference ID (full transaction ID)
+                    amountReferenceId: transaction.transactionId || null,
+                    
+                    // Additional fields for reference
+                    _id: transaction._id,
+                    paymentMethod: transaction.paymentMethod,
+                    paymentStatus: transaction.paymentStatus
+                };
+                
+                return result;
+            });
+            
+            return exportTransactions;
+            
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    /**
      * Get user's transaction history
      */
     static async getUserTransactions(userId, page = 1, limit = 20) {

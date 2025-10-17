@@ -17,6 +17,13 @@ router.get('/users/:userId/balance', ledgerController.getUserBalance);
 router.get('/users/:userId/transactions', ledgerController.getUserTransactions);
 
 /**
+ * @route   GET /api/ledger/users/:userId/transactions/export
+ * @desc    Export user's transaction history (all transactions, no pagination)
+ * @access  Private
+ */
+router.get('/users/:userId/transactions/export', ledgerController.exportUserTransactions);
+
+/**
  * @route   GET /api/ledger/users/:userId/outstanding
  * @desc    Get user's outstanding amount
  * @access  Private
