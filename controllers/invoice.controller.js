@@ -331,7 +331,7 @@ const getInvoicesByOrderId = async (req, res) => {
 const updateInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    const { remarks, particulars, status, paymentMethod, destination, rate, amount, invoiceAmount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId, vehicleNO, dispatchedThrough, jcno } = req.body;
+    const { remarks, particulars, status, paymentMethod, destination, rate, amount, invoiceAmount, deliveryCharges, cgst, sgst, totalAmount, amountInChargeable, vehicleId, vehicleNO, dispatchedThrough, jcno, CustomersCash } = req.body;
 
     // 🔍 DEBUG: Log the incoming request
     console.log('=== UPDATE INVOICE DEBUG ===');
@@ -392,6 +392,24 @@ const updateInvoice = async (req, res) => {
 
     if (totalAmount !== undefined) updateData.totalAmount = totalAmount;
     if (amountInChargeable !== undefined) updateData.amountInChargeable = amountInChargeable;
+
+    // Handle CustomersCash update (this belongs to the Order, not Invoice)
+    if (CustomersCash !== undefined) {
+      try {
+        const currentInvoice = await Invoice.findById(id);
+        if (currentInvoice && currentInvoice.orderId) {
+          await Order.findByIdAndUpdate(
+            currentInvoice.orderId,
+            { CustomersCash: CustomersCash },
+            { new: true, runValidators: true }
+          );
+          console.log(`✅ Updated Order CustomersCash to: ${CustomersCash}`);
+        }
+      } catch (orderUpdateError) {
+        console.error('❌ Failed to update Order CustomersCash:', orderUpdateError);
+        // Don't fail the invoice update if order update fails
+      }
+    }
 
     // 🔍 DEBUG: Check invoice before update
     const beforeUpdate = await Invoice.findById(id);
