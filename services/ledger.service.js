@@ -504,12 +504,11 @@ class LedgerService {
      */
     static async getAdminDashboardSummary() {
         try {
-            // Join with Users to ensure we count real credited users and aggregate only over them
+            // Join with Users to ensure we count all users with ledger entries
             const summaryAgg = await UserLedger.aggregate([
                 { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
                 { $unwind: { path: '$user', preserveNullAndEmptyArrays: false } },
-                // Consider only credited users in admin summary
-                { $match: { 'user.role': 'credited' } },
+                // Include all users who have ledger entries (both normal and credited users)
                 {
                     $group: {
                         _id: null,
@@ -530,11 +529,11 @@ class LedgerService {
                 } }
             ]);
 
-            // Overdue users: credited users with negative outstanding and last payment older than 30 days
+            // Overdue users: all users with negative outstanding and last payment older than 30 days
             const overdueAgg = await UserLedger.aggregate([
                 { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
                 { $unwind: { path: '$user', preserveNullAndEmptyArrays: false } },
-                { $match: { 'user.role': 'credited', outstandingAmount: { $lt: 0 }, lastPaymentDate: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+                { $match: { outstandingAmount: { $lt: 0 }, lastPaymentDate: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
                 { $count: 'count' }
             ]);
 

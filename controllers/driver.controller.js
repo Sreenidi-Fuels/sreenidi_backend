@@ -36,6 +36,17 @@ exports.loginDriver = async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        // Get admin's daily rate for normal drivers
+        const Admin = require('../models/Admin.model');
+        const admin = await Admin.findOne().sort({ updatedAt: -1 });
+        const adminDailyRate = admin ? admin.dailyRate : 0;
+        
+        // Set creditFuelRate based on role
+        let creditFuelRate = driver.creditFuelRate;
+        if (driver.role === 'normal') {
+            creditFuelRate = adminDailyRate;
+        }
+
         // Login successful
         res.status(200).json({ 
             message: 'Login successful',
@@ -44,7 +55,8 @@ exports.loginDriver = async (req, res) => {
                 name: driver.name,
                 mobile: driver.mobile,
                 vehicleDetails: driver.vehicleDetails,
-                creditFuelRate: driver.creditFuelRate,
+                role: driver.role,
+                creditFuelRate: creditFuelRate,
                 status: driver.status || 'signed_out'
             }
         });
@@ -115,7 +127,27 @@ exports.getDriverCredentials = async (req, res) => {
 exports.getDrivers = async (req, res) => {
     try {
         const drivers = await Driver.find().populate('vehicleDetails');
-        res.json(drivers);
+        
+        // Get admin's daily rate for normal drivers
+        const Admin = require('../models/Admin.model');
+        const admin = await Admin.findOne().sort({ updatedAt: -1 });
+        const adminDailyRate = admin ? admin.dailyRate : 0;
+        
+        // Modify creditFuelRate based on role
+        const driversWithCorrectRate = drivers.map(driver => {
+            const driverObj = driver.toObject();
+            
+            // Set creditFuelRate based on role
+            if (driverObj.role === 'normal') {
+                // Normal drivers: creditFuelRate = admin's daily rate
+                driverObj.creditFuelRate = adminDailyRate;
+            }
+            // For credited drivers, keep their existing creditFuelRate
+            
+            return driverObj;
+        });
+        
+        res.json(driversWithCorrectRate);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -126,7 +158,22 @@ exports.getDriverById = async (req, res) => {
     try {
         const driver = await Driver.findById(req.params.id).populate('vehicleDetails');
         if (!driver) return res.status(404).json({ error: 'Driver not found' });
-        res.json(driver);
+        
+        // Get admin's daily rate for normal drivers
+        const Admin = require('../models/Admin.model');
+        const admin = await Admin.findOne().sort({ updatedAt: -1 });
+        const adminDailyRate = admin ? admin.dailyRate : 0;
+        
+        const driverObj = driver.toObject();
+        
+        // Set creditFuelRate based on role
+        if (driverObj.role === 'normal') {
+            // Normal drivers: creditFuelRate = admin's daily rate
+            driverObj.creditFuelRate = adminDailyRate;
+        }
+        // For credited drivers, keep their existing creditFuelRate
+        
+        res.json(driverObj);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
